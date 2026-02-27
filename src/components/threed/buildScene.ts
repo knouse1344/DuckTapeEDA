@@ -50,8 +50,9 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
     });
     boardMesh = new THREE.Mesh(boardGeo, boardMat);
     boardMesh.rotation.x = -Math.PI / 2;
-    // Shape starts at (0,0), so offset to center it
-    boardMesh.position.set(-board.width / 2, 0, board.height / 2);
+    // After -90° X rotation, extrusion goes upward (+Y). Shift down by
+    // boardThickness so the top surface sits at y=0 (matching the plain box case).
+    boardMesh.position.set(-board.width / 2, -boardThickness, board.height / 2);
   } else {
     const boardGeo = new THREE.BoxGeometry(board.width, boardThickness, board.height);
     const boardMat = new THREE.MeshPhongMaterial({
