@@ -229,6 +229,18 @@ export function validateDesign(design: unknown): ValidationResult {
     }
   }
 
+  // ─── WS2812B DECOUPLING CAP CHECK ─────────────────────
+  const ws2812Comps = components.filter(
+    (c) => c.value?.toLowerCase().includes("ws2812") || c.partNumber?.toLowerCase().includes("ws2812")
+  );
+  if (ws2812Comps.length > 0 && capRefs.length === 0) {
+    issues.push({
+      severity: "error",
+      code: "WS2812_NO_DECOUPLING",
+      message: `Design has ${ws2812Comps.length} WS2812B LED(s) (${ws2812Comps.map((c) => c.ref).join(", ")}) but no decoupling capacitors. Each WS2812B MUST have a 100nF ceramic capacitor between VDD and VSS, placed as close as possible to the LED.`,
+    });
+  }
+
   // ─── CONNECTOR PLACEMENT CHECK ─────────────────────────
   // Connectors should be at board edges so cables can plug in from outside
   if (board && board.width > 0 && board.height > 0) {

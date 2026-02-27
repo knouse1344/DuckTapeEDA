@@ -256,6 +256,39 @@ const connectors: LibraryComponent[] = [
     ],
     tags: ["connector", "through-hole", "terminal", "power"],
   },
+  {
+    id: "CONN_JST_PH_3",
+    type: "connector",
+    name: "JST PH 3-Pin Connector",
+    value: "JST-PH 3-pin",
+    package: "JST_PH_S3B-PH-K_1x3_P2.00mm",
+    partNumber: "S3B-PH-K-S",
+    description: "JST PH series 3-pin SMD connector, 2.0mm pitch. Common for small board-to-board and wire-to-board connections (LEDs, sensors, batteries). Pin 1 is typically VCC, pin 2 is data/signal, pin 3 is GND — but assign based on your circuit needs.",
+    pins: [
+      { id: "1", name: "Pin 1", type: "signal" },
+      { id: "2", name: "Pin 2", type: "signal" },
+      { id: "3", name: "Pin 3", type: "signal" },
+    ],
+    specs: { pitch: "2.0mm", ratedCurrent: "2A", ratedVoltage: "100V" },
+    tags: ["connector", "smd", "jst", "wire-to-board", "small"],
+  },
+  {
+    id: "CONN_JST_PH_4",
+    type: "connector",
+    name: "JST PH 4-Pin Connector",
+    value: "JST-PH 4-pin",
+    package: "JST_PH_S4B-PH-K_1x4_P2.00mm",
+    partNumber: "S4B-PH-K-S",
+    description: "JST PH series 4-pin SMD connector, 2.0mm pitch. Common for addressable LED strips (VCC, DIN, DOUT, GND) and sensor connections.",
+    pins: [
+      { id: "1", name: "Pin 1", type: "signal" },
+      { id: "2", name: "Pin 2", type: "signal" },
+      { id: "3", name: "Pin 3", type: "signal" },
+      { id: "4", name: "Pin 4", type: "signal" },
+    ],
+    specs: { pitch: "2.0mm", ratedCurrent: "2A", ratedVoltage: "100V" },
+    tags: ["connector", "smd", "jst", "wire-to-board", "small"],
+  },
 ];
 
 // ─── VOLTAGE REGULATORS ──────────────────────────────────────
@@ -461,6 +494,27 @@ const ics: LibraryComponent[] = [
   },
 ];
 
+// ─── ADDRESSABLE LEDS ───────────────────────────────────────
+const addressableLeds: LibraryComponent[] = [
+  {
+    id: "LED_WS2812B",
+    type: "ic",
+    name: "WS2812B Addressable RGB LED",
+    value: "WS2812B",
+    package: "LED_SMD_5050",
+    partNumber: "WS2812B",
+    description: "Individually addressable RGB LED with built-in driver IC. 5050 SMD package (5x5mm). Controlled via a single-wire data protocol. Chain multiple LEDs by connecting DOUT to the next LED's DIN. REQUIRES a 100nF decoupling capacitor between VDD and VSS, placed as close as possible to the LED. VDD is 5V power, VSS is ground.",
+    pins: [
+      { id: "1", name: "VDD", type: "power" },
+      { id: "2", name: "DOUT", type: "signal" },
+      { id: "3", name: "VSS", type: "ground" },
+      { id: "4", name: "DIN", type: "signal" },
+    ],
+    specs: { supplyVoltage: "3.5V-5.3V", maxCurrent: "60mA (20mA per color)", protocol: "Single-wire NRZ", dataRate: "800kbps" },
+    tags: ["led", "addressable", "rgb", "neopixel", "ws2812", "smd", "5050"],
+  },
+];
+
 // ─── FULL LIBRARY ────────────────────────────────────────────
 
 export const COMPONENT_LIBRARY: LibraryComponent[] = [
@@ -473,6 +527,7 @@ export const COMPONENT_LIBRARY: LibraryComponent[] = [
   ...switches,
   ...mosfets,
   ...ics,
+  ...addressableLeds,
 ];
 
 /**

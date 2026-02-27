@@ -101,8 +101,12 @@ function buildComponent(comp: Component): THREE.Group {
       return buildCapacitor(comp);
     case "diode":
       return buildDiode(comp);
-    default:
+    default: {
+      // Check for specific ICs with custom models
+      const val = comp.value?.toLowerCase() || "";
+      if (val.includes("ws2812")) return buildWS2812B(comp);
       return buildGenericIC(comp);
+    }
   }
 }
 
@@ -259,11 +263,93 @@ function buildLED(comp: Component): THREE.Group {
 
 function buildConnector(comp: Component): THREE.Group {
   const group = new THREE.Group();
-  const isUSBC =
-    comp.package.toLowerCase().includes("usb") ||
-    comp.value.toLowerCase().includes("usb");
+  const pkgLower = comp.package.toLowerCase();
+  const valLower = comp.value.toLowerCase();
+  const isUSBC = pkgLower.includes("usb") || valLower.includes("usb");
+  const isJST = pkgLower.includes("jst") || valLower.includes("jst");
 
-  if (isUSBC) {
+  if (isJST) {
+    // JST PH connector: small white rectangular housing with pins
+    // Model built with opening facing -Z (same convention as USB-C for auto-rotation)
+    const pinCount = comp.pins?.length || 3;
+    const pitch = 2.0; // mm
+    const housingW = pitch * pinCount + 1.5; // width based on pin count
+    const housingH = 4.5; // height
+    const housingD = 6.0; // depth
+
+    // White plastic housing
+    const housingMat = new THREE.MeshPhongMaterial({
+      color: 0xf5f0e8, // off-white/cream (like real JST PH)
+      specular: 0x222222,
+      shininess: 30,
+    });
+    const housing = new THREE.Mesh(
+      new THREE.BoxGeometry(housingW, housingH, housingD),
+      housingMat
+    );
+    housing.position.set(0, housingH / 2, housingD / 2 - 1.0);
+    group.add(housing);
+
+    // Opening/slot at the front (darker recess)
+    const slotW = housingW - 1.0;
+    const slotH = 3.5;
+    const slotD = 1.5;
+    const slotMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+    const slot = new THREE.Mesh(
+      new THREE.BoxGeometry(slotW, slotH, slotD),
+      slotMat
+    );
+    slot.position.set(0, slotH / 2 + 0.5, -0.5);
+    group.add(slot);
+
+    // Internal dividers between pin slots
+    const dividerMat = new THREE.MeshPhongMaterial({ color: 0xe8e0d4 });
+    for (let i = 1; i < pinCount; i++) {
+      const divX = -((pinCount - 1) * pitch) / 2 + i * pitch - pitch / 2;
+      const divider = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, slotH - 0.5, slotD - 0.3),
+        dividerMat
+      );
+      divider.position.set(divX, slotH / 2 + 0.6, -0.5);
+      group.add(divider);
+    }
+
+    // Metal contact pins (gold-colored, extending down through the board)
+    const pinMat = new THREE.MeshPhongMaterial({
+      color: 0xdaa520,
+      specular: 0xffdd44,
+      shininess: 100,
+    });
+    for (let i = 0; i < pinCount; i++) {
+      const pinX = -((pinCount - 1) * pitch) / 2 + i * pitch;
+      // Vertical pin
+      const pin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 5.0, 0.3),
+        pinMat
+      );
+      pin.position.set(pinX, 0, housingD / 2);
+      group.add(pin);
+
+      // Solder pad on board surface
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.05, 1.5),
+        new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 })
+      );
+      pad.position.set(pinX, 0.01, housingD / 2 + 1.0);
+      group.add(pad);
+    }
+
+    // Side retention clips
+    const clipMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
+    for (const side of [-1, 1]) {
+      const clip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 3.0, 1.5),
+        clipMat
+      );
+      clip.position.set(side * (housingW / 2 + 0.2), 1.5, housingD / 2 - 1.0);
+      group.add(clip);
+    }
+  } else if (isUSBC) {
     // USB-C connector: realistic oval-port metal shell
     // Model is built with opening facing -Z at the group origin.
     // The body extends in +Z (onto the board). A small overhang extends past
@@ -425,6 +511,80 @@ function buildDiode(comp: Component): THREE.Group {
   );
   band.position.set(-1, 0.75, 0);
   group.add(band);
+
+  addLabel(group, comp.ref, 0, 0);
+  return group;
+}
+
+function buildWS2812B(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+
+  // 5050 package: 5mm x 5mm x 1.6mm white body
+  const bodyW = 5.0;
+  const bodyD = 5.0;
+  const bodyH = 1.6;
+
+  // White ceramic/plastic body
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0xf0f0f0, specular: 0x444444, shininess: 40 });
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(bodyW, bodyH, bodyD),
+    bodyMat
+  );
+  body.position.y = bodyH / 2;
+  group.add(body);
+
+  // LED lens on top — translucent dome area (square with rounded feel)
+  const lensH = 0.4;
+  const lensMat = new THREE.MeshPhongMaterial({
+    color: 0xffffee,
+    emissive: 0xffffee,
+    emissiveIntensity: 0.2,
+    transparent: true,
+    opacity: 0.75,
+    specular: 0xffffff,
+    shininess: 120,
+  });
+  const lens = new THREE.Mesh(
+    new THREE.BoxGeometry(3.5, lensH, 3.5),
+    lensMat
+  );
+  lens.position.y = bodyH + lensH / 2;
+  group.add(lens);
+
+  // Pin 1 marker — small triangle/notch at one corner
+  const markerMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+  const marker = new THREE.Mesh(
+    new THREE.CircleGeometry(0.5, 3),
+    markerMat
+  );
+  marker.rotation.x = -Math.PI / 2;
+  marker.position.set(-bodyW / 2 + 0.8, bodyH + 0.01, -bodyD / 2 + 0.8);
+  group.add(marker);
+
+  // SMD solder pads — 4 pads on the bottom edges
+  const padMat = new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 });
+  const padPositions = [
+    { x: -2.1, z: -1.6 },  // Pin 1 (VDD)
+    { x: -2.1, z: 1.6 },   // Pin 2 (DOUT)
+    { x: 2.1, z: 1.6 },    // Pin 3 (VSS)
+    { x: 2.1, z: -1.6 },   // Pin 4 (DIN)
+  ];
+  for (const pp of padPositions) {
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.05, 1.0),
+      padMat
+    );
+    pad.position.set(pp.x, 0.01, pp.z);
+    group.add(pad);
+  }
+
+  // Thermal pad underneath (center)
+  const thermalPad = new THREE.Mesh(
+    new THREE.BoxGeometry(3.2, 0.05, 3.2),
+    padMat
+  );
+  thermalPad.position.set(0, 0.01, 0);
+  group.add(thermalPad);
 
   addLabel(group, comp.ref, 0, 0);
   return group;

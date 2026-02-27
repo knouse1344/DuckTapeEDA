@@ -44,6 +44,14 @@ DESIGN RULES (CRITICAL — follow strictly)
 - For voltage regulators: input capacitor (10uF electrolytic) and output capacitor (10uF electrolytic + 100nF ceramic) are required
 - Trace widths: signal traces 0.25mm, power traces 0.5mm, high-current (>500mA) traces 1.0mm
 
+**WS2812B / Addressable LED Rules:**
+- WS2812B is an IC (type "ic"), NOT a regular LED — it has a built-in controller chip
+- MUST have a 100nF (0.1uF) ceramic decoupling capacitor between VDD (pin 1) and VSS (pin 3), placed as close as possible to the LED
+- Data input is DIN (pin 4), data output is DOUT (pin 2) — for daisy-chaining multiple LEDs
+- Powered by 5V on VDD. Do NOT put a current-limiting resistor on VDD — it's a power pin, not a simple LED
+- For single WS2812B boards: connect DIN to the data source, DOUT can be left as a pass-through on the connector for chaining
+- JST connectors are commonly used with addressable LED boards for compact wire-to-board connections
+
 **Physical/PCB Rules:**
 - Board size must be compact but allow hand-soldering (minimum 2mm between components)
 - All components must fit within board boundaries
@@ -55,6 +63,7 @@ DESIGN RULES (CRITICAL — follow strictly)
   - USB connectors: place at x=0 (left edge) or x=board.width (right edge), with the opening facing outward off the board edge
   - Barrel jacks: place at a board edge
   - Pin headers: place at a board edge or near one
+  - JST connectors: place at a board edge, with the opening facing outward
   - Screw terminals: place at a board edge
   - The connector's pcbPosition.y should be roughly centered along the edge, and pcbPosition.x should be at 0 or board.width
   - Use rotation to orient the connector opening toward the outside of the board
