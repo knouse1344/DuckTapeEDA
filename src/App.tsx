@@ -21,6 +21,7 @@ export default function App() {
   );
   const [streaming, setStreaming] = useState(false);
   const [refining, setRefining] = useState(false);
+  const [buildingDesign, setBuildingDesign] = useState(false);
   const streamingTextRef = useRef("");
 
   // Design saving state
@@ -69,6 +70,9 @@ export default function App() {
         (delta) => {
           streamingTextRef.current += delta;
           const currentText = streamingTextRef.current;
+          // Detect incomplete JSON block = design is being generated
+          const hasOpenJson = /```json/.test(currentText) && !/```json\s*[\s\S]*?```/.test(currentText);
+          setBuildingDesign(hasOpenJson);
           setMessages((prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
@@ -120,6 +124,7 @@ export default function App() {
     } finally {
       setStreaming(false);
       setRefining(false);
+      setBuildingDesign(false);
     }
   };
 
@@ -227,6 +232,7 @@ export default function App() {
             onSend={handleSend}
             loading={streaming}
             refining={refining}
+            buildingDesign={buildingDesign}
           />
         </div>
         <div className="w-full md:w-[60%] overflow-hidden">
@@ -245,5 +251,11 @@ export default function App() {
 }
 
 function stripJsonBlock(text: string): string {
-  return text.replace(/```json\s*[\s\S]*?```/, "").trim();
+  // Strip complete JSON fenced blocks
+  let result = text.replace(/```json\s*[\s\S]*?```/g, "").trim();
+  // Strip incomplete JSON blocks still being streamed (no closing ```)
+  if (result.includes("```json")) {
+    result = result.replace(/```json[\s\S]*$/, "").trim();
+  }
+  return result;
 }
