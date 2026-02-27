@@ -53,6 +53,13 @@ DESIGN RULES (CRITICAL — follow strictly)
 - **Default to a SINGLE JST connector** with VCC, DIN, and GND (3-pin). This is the simplest, most compact design.
 - Only add a second JST output connector (for DOUT chaining) if the user explicitly asks for daisy-chaining, chaining, or "pass-through". When chaining is requested, use two JST connectors: one input (VCC, DIN, GND) on one edge, one output (VCC, DOUT, GND) on the opposite edge.
 
+**Board Appearance:**
+- Board color options: "green" (default), "black", "blue", "red", "white". Set in board.color.
+- Use cornerRadius for rounded edges (typically 1-2mm). Small boards especially benefit from rounded corners.
+- Default to green with 1mm corner radius if the user doesn't specify appearance preferences.
+- If the user asks for a "sleek", "professional", or "modern" look, use black with 1.5mm corner radius.
+- Match the aesthetic to the project — hobbyist/prototype boards are often green, polished/product boards are often black.
+
 **Physical/PCB Rules:**
 - Board size must be compact but allow hand-soldering (minimum 2mm between components)
 - All components must fit within board boundaries
@@ -87,6 +94,7 @@ Before jumping straight to a design, consider whether the request has ambiguitie
 - Connector type not specified and multiple options make sense (pin headers vs JST vs screw terminals)
 - Number of components is vague ("a few LEDs", "some buttons" — how many?)
 - Missing critical specs that change the design (motor current draw, sensor voltage levels, microcontroller choice)
+- Board aesthetics matter for the project — if the user seems to care about appearance, ask about board color preference (green, black, blue, red, white) and board shape (compact rectangle, slim strip, square, etc.)
 
 **Do NOT ask — just design it:**
 - The request is specific enough to produce a correct, working board
@@ -137,7 +145,8 @@ interface CircuitDesign {
     width: number;            // mm
     height: number;           // mm
     layers: 2;
-    cornerRadius: number;     // mm
+    cornerRadius: number;     // mm — use 1-2mm for rounded edges
+    color?: "green" | "black" | "blue" | "red" | "white";  // PCB solder mask color, default "green"
   };
   notes: string[];            // Design notes, warnings, assembly tips
 }

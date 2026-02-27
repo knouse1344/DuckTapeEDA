@@ -1,8 +1,15 @@
 import * as THREE from "three";
 import type { CircuitDesign, Component } from "../../types/circuit";
 
-// Colors
-const BOARD_GREEN = 0x2d6b35;
+// Board color palette
+const BOARD_COLORS: Record<string, number> = {
+  green: 0x2d6b35,
+  black: 0x1a1a1a,
+  blue: 0x1a3a6b,
+  red: 0x8b1a1a,
+  white: 0xe8e8e0,
+};
+const BOARD_DEFAULT_COLOR = 0x2d6b35;
 const COPPER = 0xb87333;
 const SILKSCREEN = 0xffffff;
 const METAL_SILVER = 0xc0c0c0;
@@ -23,21 +30,42 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
 
   // --- PCB Board ---
   const boardThickness = 1.6;
-  const boardGeo = new THREE.BoxGeometry(
-    board.width,
-    boardThickness,
-    board.height
-  );
+  const boardColor = BOARD_COLORS[board.color || ""] || BOARD_DEFAULT_COLOR;
+  const cornerR = board.cornerRadius || 0;
 
-  // Round the board edges with a slightly larger shape
-  const boardMat = new THREE.MeshPhongMaterial({
-    color: BOARD_GREEN,
-    specular: 0x111111,
-    shininess: 30,
-  });
-  const boardMesh = new THREE.Mesh(boardGeo, boardMat);
-  boardMesh.position.set(0, -boardThickness / 2, 0);
+  // Use rounded shape if cornerRadius > 0, otherwise plain box
+  let boardMesh: THREE.Mesh;
+  if (cornerR > 0) {
+    const boardShape = createRoundedRectShape(board.width, board.height, cornerR);
+    const boardGeo = new THREE.ExtrudeGeometry(boardShape, {
+      depth: boardThickness,
+      bevelEnabled: false,
+    });
+    // ExtrudeGeometry creates shape in XY, extruded along Z.
+    // We need it in XZ (horizontal), so rotate -90° around X, then center it.
+    const boardMat = new THREE.MeshPhongMaterial({
+      color: boardColor,
+      specular: 0x111111,
+      shininess: 30,
+    });
+    boardMesh = new THREE.Mesh(boardGeo, boardMat);
+    boardMesh.rotation.x = -Math.PI / 2;
+    // Shape starts at (0,0), so offset to center it
+    boardMesh.position.set(-board.width / 2, 0, board.height / 2);
+  } else {
+    const boardGeo = new THREE.BoxGeometry(board.width, boardThickness, board.height);
+    const boardMat = new THREE.MeshPhongMaterial({
+      color: boardColor,
+      specular: 0x111111,
+      shininess: 30,
+    });
+    boardMesh = new THREE.Mesh(boardGeo, boardMat);
+    boardMesh.position.set(0, -boardThickness / 2, 0);
+  }
   scene.add(boardMesh);
+
+  // Silkscreen color adapts to board — white on dark boards, dark on light boards
+  const silkColor = (board.color === "white") ? 0x222222 : SILKSCREEN;
 
   // Bottom copper layer (thin plane underneath)
   const copperGeo = new THREE.BoxGeometry(
@@ -58,7 +86,7 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
   const borderGeo = new THREE.EdgesGeometry(
     new THREE.BoxGeometry(board.width - 0.5, 0.01, board.height - 0.5)
   );
-  const borderMat = new THREE.LineBasicMaterial({ color: SILKSCREEN });
+  const borderMat = new THREE.LineBasicMaterial({ color: silkColor });
   const borderLine = new THREE.LineSegments(borderGeo, borderMat);
   borderLine.position.set(0, 0.01, 0);
   scene.add(borderLine);

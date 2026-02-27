@@ -45,6 +45,7 @@ export interface BoardSpec {
   height: number;
   layers: 2;
   cornerRadius: number;
+  color?: "green" | "black" | "blue" | "red" | "white";
 }
 
 export interface Position {
