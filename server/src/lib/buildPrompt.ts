@@ -49,8 +49,9 @@ DESIGN RULES (CRITICAL — follow strictly)
 - MUST have a 100nF (0.1uF) ceramic decoupling capacitor between VDD (pin 1) and VSS (pin 3), placed as close as possible to the LED
 - Data input is DIN (pin 4), data output is DOUT (pin 2) — for daisy-chaining multiple LEDs
 - Powered by 5V on VDD. Do NOT put a current-limiting resistor on VDD — it's a power pin, not a simple LED
-- For single WS2812B boards: connect DIN to the data source, DOUT can be left as a pass-through on the connector for chaining
 - JST connectors are commonly used with addressable LED boards for compact wire-to-board connections
+- **Default to a SINGLE JST connector** with VCC, DIN, and GND (3-pin). This is the simplest, most compact design.
+- Only add a second JST output connector (for DOUT chaining) if the user explicitly asks for daisy-chaining, chaining, or "pass-through". When chaining is requested, use two JST connectors: one input (VCC, DIN, GND) on one edge, one output (VCC, DOUT, GND) on the opposite edge.
 
 **Physical/PCB Rules:**
 - Board size must be compact but allow hand-soldering (minimum 2mm between components)
