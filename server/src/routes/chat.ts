@@ -8,7 +8,7 @@ import { validateDesign, formatValidationFeedback } from "../lib/validateDesign.
 const router = Router();
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "dev-encryption-key";
-const MAX_RETRIES = 1; // retry once on validation failure
+const MAX_RETRIES = 2; // retry up to twice — electrical checks + layout quality checks
 
 /**
  * Call the Anthropic API.

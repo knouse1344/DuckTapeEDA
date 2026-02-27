@@ -303,6 +303,77 @@ export function validateDesign(design: unknown): ValidationResult {
     }
   }
 
+  // ─── LAYOUT QUALITY CHECKS ────────────────────────────
+  // "Second brain" — catches aesthetic/layout issues and feeds them back
+  // through the self-correction loop, just like electrical errors.
+  if (board && board.width > 0 && board.height > 0) {
+    const positionedComps = components.filter((c) => isValidPosition(c.pcbPosition));
+    if (positionedComps.length >= 2) {
+      // Bounding box of all components
+      const xs = positionedComps.map((c) => c.pcbPosition.x);
+      const ys = positionedComps.map((c) => c.pcbPosition.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const clusterCenterX = (minX + maxX) / 2;
+      const clusterCenterY = (minY + maxY) / 2;
+      const boardCenterX = board.width / 2;
+      const boardCenterY = board.height / 2;
+
+      // Component centering — are components roughly centered on the board?
+      const offsetX = Math.abs(clusterCenterX - boardCenterX);
+      const offsetY = Math.abs(clusterCenterY - boardCenterY);
+      const maxAllowedOffsetX = board.width * 0.25;
+      const maxAllowedOffsetY = board.height * 0.25;
+
+      if (offsetX > maxAllowedOffsetX || offsetY > maxAllowedOffsetY) {
+        issues.push({
+          severity: "error",
+          code: "COMPONENTS_OFF_CENTER",
+          message: `Components are off-center on the board. The component cluster is centered at (${clusterCenterX.toFixed(1)}, ${clusterCenterY.toFixed(1)}) but the board center is (${boardCenterX.toFixed(1)}, ${boardCenterY.toFixed(1)}). Reposition components so they are centered on the board, or shrink the board to fit tightly around the components.`,
+        });
+      }
+
+      // Board utilization — is the board way too big for the components?
+      const clusterW = maxX - minX + 4; // add ~4mm for component bodies
+      const clusterH = maxY - minY + 4;
+      const utilization = (clusterW * clusterH) / (board.width * board.height);
+      if (utilization < 0.15 && board.width * board.height > 200) {
+        issues.push({
+          severity: "warning",
+          code: "LOW_BOARD_UTILIZATION",
+          message: `Components only use about ${Math.round(utilization * 100)}% of the board area (${board.width}x${board.height}mm). Consider making the board smaller to fit the components more tightly, or spread components out to use the space better.`,
+        });
+      }
+
+      // One-axis clustering — all components bunched on one side?
+      const nonConnectors = positionedComps.filter((c) => c.type !== "connector");
+      if (nonConnectors.length >= 2) {
+        const ncXs = nonConnectors.map((c) => c.pcbPosition.x);
+        const ncYs = nonConnectors.map((c) => c.pcbPosition.y);
+        const ncSpanX = Math.max(...ncXs) - Math.min(...ncXs);
+        const ncSpanY = Math.max(...ncYs) - Math.min(...ncYs);
+
+        // If components span less than 20% of an axis on a board > 20mm in that dimension
+        if (ncSpanX < board.width * 0.2 && board.width > 20) {
+          issues.push({
+            severity: "warning",
+            code: "CLUSTERED_X",
+            message: `Non-connector components are all bunched within ${ncSpanX.toFixed(1)}mm horizontally on a ${board.width}mm wide board. Spread them out or make the board narrower.`,
+          });
+        }
+        if (ncSpanY < board.height * 0.2 && board.height > 20) {
+          issues.push({
+            severity: "warning",
+            code: "CLUSTERED_Y",
+            message: `Non-connector components are all bunched within ${ncSpanY.toFixed(1)}mm vertically on a ${board.height}mm tall board. Spread them out or make the board shorter.`,
+          });
+        }
+      }
+    }
+  }
+
   return toResult(issues);
 }
 

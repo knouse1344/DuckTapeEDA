@@ -62,6 +62,9 @@ DESIGN RULES (CRITICAL — follow strictly)
 **Physical/PCB Rules:**
 - Board size must be compact but allow hand-soldering (minimum 2mm between components)
 - All components must fit within board boundaries
+- **CENTER components on the board** — don't cluster everything in one corner. The component group should be roughly centered within the board outline.
+- Size the board to fit the components snugly with 2-3mm margin on each side — don't make the board excessively large relative to the components.
+- When the user asks for a shape change (slimmer, thinner, more rectangular, smaller), adjust the board dimensions AND reposition ALL component pcbPositions to stay centered and balanced within the new shape.
 - Prefer through-hole packages for hobbyist builds (easier to solder)
 - Use SMD only when through-hole isn't practical (e.g. USB-C connectors, LDO regulators)
 - PCB positions are in millimeters, representing physical placement on the board
