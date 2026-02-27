@@ -10,7 +10,12 @@ export async function sendMessage(
   apiKey: string,
   messages: ChatMessage[]
 ): Promise<ClaudeResponse> {
-  const response = await fetch("/api/claude/v1/messages", {
+  // Use proxy in dev, direct API in production
+  const apiUrl = import.meta.env.DEV
+    ? "/api/claude/v1/messages"
+    : "https://api.anthropic.com/v1/messages";
+
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
