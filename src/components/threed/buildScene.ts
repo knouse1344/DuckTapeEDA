@@ -124,6 +124,16 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
 }
 
 function buildComponent(comp: Component): THREE.Group {
+  // Check for specific named components first (value-based dispatch)
+  const val = comp.value?.toLowerCase() || "";
+  if (val.includes("arduino nano")) return buildArduinoNano(comp);
+  if (val.includes("raspberry pi pico")) return buildPiPico(comp);
+  if (val.includes("ssd1306")) return buildOLEDModule(comp);
+  if (val.includes("lcd 1602")) return buildLCDModule(comp);
+  if (val.includes("dht22")) return buildDHT22(comp);
+  if (val.includes("ws2812")) return buildWS2812B(comp);
+  if (val.includes("piezo buzzer") || val.includes("passive buzzer")) return buildBuzzer(comp);
+
   switch (comp.type) {
     case "resistor":
       return buildResistor(comp);
@@ -135,12 +145,8 @@ function buildComponent(comp: Component): THREE.Group {
       return buildCapacitor(comp);
     case "diode":
       return buildDiode(comp);
-    default: {
-      // Check for specific ICs with custom models
-      const val = comp.value?.toLowerCase() || "";
-      if (val.includes("ws2812")) return buildWS2812B(comp);
+    default:
       return buildGenericIC(comp);
-    }
   }
 }
 
@@ -713,15 +719,524 @@ function buildWS2812B(comp: Component): THREE.Group {
   return group;
 }
 
+// ---------------------------------------------------------------------------
+// Recognizable component builders
+// ---------------------------------------------------------------------------
+
+function buildArduinoNano(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pcbW = 18;
+  const pcbD = 45;
+  const pcbH = 1.6;
+
+  // Blue PCB board
+  const pcbMat = new THREE.MeshPhongMaterial({ color: 0x1a4a8a, specular: 0x222244, shininess: 30 });
+  const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
+  group.add(pcb);
+
+  // ATmega328P chip (black rectangle in center)
+  const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
+  const chip = makeBeveledBox(7, 1.0, 7, 0.1, chipMat);
+  chip.position.y = pcbH;
+  group.add(chip);
+
+  // Pin 1 dot on chip
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.3, 12),
+    new THREE.MeshBasicMaterial({ color: 0xcccccc })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.set(-2.5, pcbH + 1.01, -2.5);
+  group.add(dot);
+
+  // Mini-USB port at one end (silver box)
+  const usbMat = new THREE.MeshPhongMaterial({ color: USB_METAL, specular: 0xcccccc, shininess: 100 });
+  const usb = new THREE.Mesh(new THREE.BoxGeometry(7.5, 3.5, 5.5), usbMat);
+  usb.position.set(0, pcbH + 1.75, -pcbD / 2 + 2.5);
+  group.add(usb);
+
+  // USB port opening (dark)
+  const usbOpen = new THREE.Mesh(
+    new THREE.BoxGeometry(6.5, 2.2, 1),
+    new THREE.MeshPhongMaterial({ color: 0x1a1a1a })
+  );
+  usbOpen.position.set(0, pcbH + 1.75, -pcbD / 2 + 0.01);
+  group.add(usbOpen);
+
+  // Crystal oscillator (silver can)
+  const crystal = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.5, 1.5, 0.8, 12),
+    new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 })
+  );
+  crystal.position.set(-4, pcbH + 0.4, 5);
+  group.add(crystal);
+
+  // Reset button (small silver square)
+  const resetBtn = new THREE.Mesh(
+    new THREE.BoxGeometry(2.5, 1.2, 2.5),
+    new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 60 })
+  );
+  resetBtn.position.set(5, pcbH + 0.6, -8);
+  group.add(resetBtn);
+
+  // Two rows of gold pin headers along edges
+  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
+  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  const pitch = 2.54;
+  const pinsPerSide = 15;
+  const startZ = -pcbD / 2 + 3;
+
+  for (const side of [-1, 1]) {
+    // Black plastic header strip
+    const headerStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 2.5, pinsPerSide * pitch),
+      headerMat
+    );
+    headerStrip.position.set(side * (pcbW / 2 - 1.5), pcbH + 1.25, startZ + (pinsPerSide - 1) * pitch / 2);
+    group.add(headerStrip);
+
+    for (let i = 0; i < pinsPerSide; i++) {
+      const pinZ = startZ + i * pitch;
+      // Gold pin extending up through header
+      const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
+      pin.position.set(side * (pcbW / 2 - 1.5), pcbH + 0.25, pinZ);
+      group.add(pin);
+    }
+  }
+
+  // Power LED (green, tiny)
+  const pwrLed = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 0.5, 0.6),
+    new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 })
+  );
+  pwrLed.position.set(4, pcbH + 0.25, 12);
+  group.add(pwrLed);
+
+  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  return group;
+}
+
+function buildPiPico(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pcbW = 21;
+  const pcbD = 51;
+  const pcbH = 1.6;
+
+  // Green PCB board
+  const pcbMat = new THREE.MeshPhongMaterial({ color: 0x2d6b35, specular: 0x224422, shininess: 30 });
+  const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
+  group.add(pcb);
+
+  // RP2040 chip (black square, center of board)
+  const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
+  const chip = makeBeveledBox(7, 1.0, 7, 0.1, chipMat);
+  chip.position.y = pcbH;
+  group.add(chip);
+
+  // Pin 1 dot on chip
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.3, 12),
+    new THREE.MeshBasicMaterial({ color: 0xcccccc })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.set(-2.5, pcbH + 1.01, -2.5);
+  group.add(dot);
+
+  // USB-C port at one end
+  const usbMat = new THREE.MeshPhongMaterial({ color: USB_METAL, specular: 0xcccccc, shininess: 100 });
+  const usb = new THREE.Mesh(new THREE.BoxGeometry(9, 3.2, 7), usbMat);
+  usb.position.set(0, pcbH + 1.6, -pcbD / 2 + 3);
+  group.add(usb);
+
+  const usbOpen = new THREE.Mesh(
+    new THREE.BoxGeometry(8, 2.2, 1),
+    new THREE.MeshPhongMaterial({ color: 0x1a1a1a })
+  );
+  usbOpen.position.set(0, pcbH + 1.6, -pcbD / 2 + 0.01);
+  group.add(usbOpen);
+
+  // Flash memory chip (small black rectangle)
+  const flash = makeBeveledBox(4, 0.8, 3, 0.08, chipMat);
+  flash.position.set(5, pcbH, 8);
+  group.add(flash);
+
+  // BOOTSEL button
+  const bootBtn = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.2, 1.2, 0.8, 12),
+    new THREE.MeshPhongMaterial({ color: 0xf0f0e8, shininess: 40 })
+  );
+  bootBtn.position.set(-5, pcbH + 0.4, -10);
+  group.add(bootBtn);
+
+  // Two rows of gold pin headers along edges
+  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
+  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  const pitch = 2.54;
+  const pinsPerSide = 20;
+  const startZ = -pcbD / 2 + 3;
+
+  for (const side of [-1, 1]) {
+    const headerStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 2.5, pinsPerSide * pitch),
+      headerMat
+    );
+    headerStrip.position.set(side * (pcbW / 2 - 1.5), pcbH + 1.25, startZ + (pinsPerSide - 1) * pitch / 2);
+    group.add(headerStrip);
+
+    for (let i = 0; i < pinsPerSide; i++) {
+      const pinZ = startZ + i * pitch;
+      const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
+      pin.position.set(side * (pcbW / 2 - 1.5), pcbH + 0.25, pinZ);
+      group.add(pin);
+    }
+  }
+
+  // On-board LED (green)
+  const led = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 0.5, 0.6),
+    new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 })
+  );
+  led.position.set(3, pcbH + 0.25, 14);
+  group.add(led);
+
+  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  return group;
+}
+
+function buildOLEDModule(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pcbW = 27;
+  const pcbD = 27;
+  const pcbH = 1.2;
+
+  // Dark blue/black PCB
+  const pcbMat = new THREE.MeshPhongMaterial({ color: 0x0a1a3a, specular: 0x111133, shininess: 25 });
+  const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
+  group.add(pcb);
+
+  // Display bezel (black frame around the screen)
+  const bezelMat = new THREE.MeshPhongMaterial({ color: 0x0a0a0a, specular: 0x111111, shininess: 15 });
+  const bezel = makeBeveledBox(25, 1.8, 16, 0.2, bezelMat);
+  bezel.position.set(0, pcbH, -2);
+  group.add(bezel);
+
+  // Active screen area (very dark with slight blue tint — looks like an OLED off-state)
+  const screenMat = new THREE.MeshPhongMaterial({
+    color: 0x020208,
+    emissive: 0x000811,
+    emissiveIntensity: 0.3,
+    specular: 0x333355,
+    shininess: 120,
+  });
+  const screen = new THREE.Mesh(
+    new THREE.BoxGeometry(22, 0.3, 11),
+    screenMat
+  );
+  screen.position.set(0, pcbH + 1.95, -2);
+  group.add(screen);
+
+  // Subtle screen reflection highlight
+  const glare = new THREE.Mesh(
+    new THREE.PlaneGeometry(18, 4),
+    new THREE.MeshBasicMaterial({ color: 0x111133, transparent: true, opacity: 0.15 })
+  );
+  glare.rotation.x = -Math.PI / 2;
+  glare.position.set(-2, pcbH + 2.12, -3);
+  group.add(glare);
+
+  // 4-pin header along one edge
+  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
+  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  const pitch = 2.54;
+
+  const headerStrip = new THREE.Mesh(
+    new THREE.BoxGeometry(4 * pitch, 2.5, 2.5),
+    headerMat
+  );
+  headerStrip.position.set(0, pcbH + 1.25, pcbD / 2 - 1.5);
+  group.add(headerStrip);
+
+  for (let i = 0; i < 4; i++) {
+    const pinX = -((3) * pitch) / 2 + i * pitch;
+    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
+    pin.position.set(pinX, pcbH + 0.25, pcbD / 2 - 1.5);
+    group.add(pin);
+    addPad(group, pinX, pcbD / 2 - 1.5);
+  }
+
+  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  return group;
+}
+
+function buildLCDModule(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pcbW = 36;
+  const pcbD = 80;
+  const pcbH = 1.6;
+
+  // Green PCB
+  const pcbMat = new THREE.MeshPhongMaterial({ color: 0x1a6b2a, specular: 0x224422, shininess: 25 });
+  const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
+  group.add(pcb);
+
+  // LCD metal frame/bezel
+  const frameMat = new THREE.MeshPhongMaterial({ color: 0x888888, specular: 0xaaaaaa, shininess: 60 });
+  const frame = makeBeveledBox(33, 4.5, 60, 0.3, frameMat);
+  frame.position.set(0, pcbH, -5);
+  group.add(frame);
+
+  // Display window (dark green/black LCD area)
+  const displayMat = new THREE.MeshPhongMaterial({
+    color: 0x0a2a0a,
+    emissive: 0x001a00,
+    emissiveIntensity: 0.2,
+    specular: 0x224422,
+    shininess: 80,
+  });
+  const display = new THREE.Mesh(
+    new THREE.BoxGeometry(28, 0.3, 14),
+    displayMat
+  );
+  display.position.set(0, pcbH + 4.65, -5);
+  group.add(display);
+
+  // I2C backpack (small blue PCB on the back, but visible as 4 pins)
+  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
+  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  const pitch = 2.54;
+
+  const headerStrip = new THREE.Mesh(
+    new THREE.BoxGeometry(4 * pitch, 2.5, 2.5),
+    headerMat
+  );
+  headerStrip.position.set(0, pcbH + 1.25, pcbD / 2 - 2);
+  group.add(headerStrip);
+
+  for (let i = 0; i < 4; i++) {
+    const pinX = -((3) * pitch) / 2 + i * pitch;
+    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
+    pin.position.set(pinX, pcbH + 0.25, pcbD / 2 - 2);
+    group.add(pin);
+    addPad(group, pinX, pcbD / 2 - 2);
+  }
+
+  // Contrast potentiometer (small blue square on the backpack area)
+  const pot = new THREE.Mesh(
+    new THREE.BoxGeometry(3, 2, 3),
+    new THREE.MeshPhongMaterial({ color: 0x2244aa })
+  );
+  pot.position.set(10, pcbH + 1.0, pcbD / 2 - 6);
+  group.add(pot);
+
+  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  return group;
+}
+
+function buildDHT22(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const bodyW = 15;
+  const bodyD = 7;
+  const bodyH = 20;
+
+  // White plastic housing
+  const housingMat = new THREE.MeshPhongMaterial({
+    color: 0xf0f0e8,
+    specular: 0x333333,
+    shininess: 30,
+  });
+  const housing = makeBeveledBox(bodyW, bodyH, bodyD, 0.5, housingMat);
+  housing.position.y = 0.5;
+  group.add(housing);
+
+  // Vent/grid pattern on front face (series of horizontal dark slots)
+  const slotMat = new THREE.MeshPhongMaterial({ color: 0xb0b0a0 });
+  for (let i = 0; i < 6; i++) {
+    const slot = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 0.8, 0.3),
+      slotMat
+    );
+    slot.position.set(0, 5 + i * 2.4, -bodyD / 2 - 0.1);
+    group.add(slot);
+  }
+
+  // Vertical dividers in the grid
+  for (let i = 0; i < 3; i++) {
+    const vSlot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 14, 0.3),
+      slotMat
+    );
+    vSlot.position.set(-4 + i * 4, 11, -bodyD / 2 - 0.1);
+    group.add(vSlot);
+  }
+
+  // 4 wire leads (SIP package)
+  const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
+  const wireGeo = new THREE.CylinderGeometry(0.2, 0.2, 4, 8);
+  const pinSpacing = 2.54;
+  for (let i = 0; i < 4; i++) {
+    const pinX = -((3) * pinSpacing) / 2 + i * pinSpacing;
+    const wire = new THREE.Mesh(wireGeo, wireMat);
+    wire.position.set(pinX, -1.5, 0);
+    group.add(wire);
+    addPad(group, pinX, 0);
+  }
+
+  addLabel(group, comp.ref, 0, bodyD / 2 + 2);
+  return group;
+}
+
+function buildBuzzer(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const radius = 6;
+  const height = 4;
+
+  // Black cylindrical body
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 25 });
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, height, 24),
+    bodyMat
+  );
+  body.position.y = height / 2 + 0.5;
+  group.add(body);
+
+  // Top face (slightly different color)
+  const topFace = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius - 0.1, radius - 0.1, 0.2, 24),
+    new THREE.MeshPhongMaterial({ color: 0x222222, specular: 0x333333, shininess: 15 })
+  );
+  topFace.position.y = height + 0.5;
+  group.add(topFace);
+
+  // Tone hole in center of top
+  const holeMat = new THREE.MeshPhongMaterial({ color: 0x0a0a0a });
+  const hole = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.5, 1.5, 0.3, 16),
+    holeMat
+  );
+  hole.position.y = height + 0.55;
+  group.add(hole);
+
+  // Concentric rings on top (decorative)
+  const ringMat = new THREE.MeshPhongMaterial({ color: 0x2a2a2a });
+  for (const r of [3, 4.5]) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(r, 0.15, 8, 24),
+      ringMat
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = height + 0.55;
+    group.add(ring);
+  }
+
+  // Polarity marker (+ symbol on top)
+  const plusMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+  const plusH = new THREE.Mesh(new THREE.BoxGeometry(2, 0.05, 0.3), plusMat);
+  plusH.position.set(-3, height + 0.65, 0);
+  group.add(plusH);
+  const plusV = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 2), plusMat);
+  plusV.position.set(-3, height + 0.65, 0);
+  group.add(plusV);
+
+  // Wire leads
+  const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
+  const wireGeo = new THREE.CylinderGeometry(0.15, 0.15, 3, 8);
+  const wireL = new THREE.Mesh(wireGeo, wireMat);
+  wireL.position.set(-2, -1, 0);
+  group.add(wireL);
+  const wireR = new THREE.Mesh(wireGeo, wireMat);
+  wireR.position.set(2, -1, 0);
+  group.add(wireR);
+
+  addPad(group, -2, 0);
+  addPad(group, 2, 0);
+
+  addLabel(group, comp.ref, 0, radius + 2);
+  return group;
+}
+
+function buildGenericModule(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pinCount = comp.pins?.length || 4;
+
+  // Size PCB based on pin count
+  const pitch = 2.54;
+  const pcbW = Math.max(12, pinCount <= 8 ? 15 : 20);
+  const pcbD = Math.max(12, pinCount * pitch * 0.6);
+  const pcbH = 1.2;
+
+  // Navy blue PCB (typical breakout board color)
+  const pcbMat = new THREE.MeshPhongMaterial({ color: 0x0a1a4a, specular: 0x111133, shininess: 25 });
+  const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.2, pcbMat);
+  group.add(pcb);
+
+  // IC/chip on top (black rectangle)
+  const chipW = Math.min(pcbW - 4, 8);
+  const chipD = Math.min(pcbD - 6, 8);
+  const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
+  const chip = makeBeveledBox(chipW, 0.8, chipD, 0.08, chipMat);
+  chip.position.y = pcbH;
+  group.add(chip);
+
+  // Pin 1 dot
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.25, 12),
+    new THREE.MeshBasicMaterial({ color: 0xcccccc })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.set(-chipW / 2 + 0.6, pcbH + 0.81, -chipD / 2 + 0.6);
+  group.add(dot);
+
+  // Pin header row along one edge
+  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
+  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+
+  // Single row of pins
+  const headerLen = (pinCount - 1) * pitch + 2;
+  const headerStrip = new THREE.Mesh(
+    new THREE.BoxGeometry(headerLen, 2.5, 2.5),
+    headerMat
+  );
+  headerStrip.position.set(0, pcbH + 1.25, pcbD / 2 - 1.5);
+  group.add(headerStrip);
+
+  for (let i = 0; i < pinCount; i++) {
+    const pinX = -((pinCount - 1) * pitch) / 2 + i * pitch;
+    if (Math.abs(pinX) > pcbW / 2 - 0.5) continue; // skip if off-board
+    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
+    pin.position.set(pinX, pcbH + 0.25, pcbD / 2 - 1.5);
+    group.add(pin);
+    addPad(group, pinX, pcbD / 2 - 1.5);
+  }
+
+  // A few passive components (tiny rectangles for decoupling caps etc.)
+  const passiveMat = new THREE.MeshPhongMaterial({ color: 0x3b2a1a });
+  for (let i = 0; i < Math.min(3, Math.floor(pinCount / 3)); i++) {
+    const passive = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 0.4, 0.8),
+      passiveMat
+    );
+    passive.position.set(-pcbW / 2 + 3 + i * 3, pcbH + 0.2, -pcbD / 2 + 3);
+    group.add(passive);
+  }
+
+  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  return group;
+}
+
 function buildGenericIC(comp: Component): THREE.Group {
   const pkgLower = comp.package.toLowerCase();
 
   // Dispatch to specific IC package builders
-  if (pkgLower.includes("dip") && !pkgLower.includes("module")) {
+  if (pkgLower.includes("dip")) {
     return buildDIP(comp);
   }
   if (pkgLower.includes("soic") || pkgLower.includes("sop") || pkgLower.includes("ssop")) {
     return buildSOIC(comp);
+  }
+
+  // Module packages → breakout board model
+  if (pkgLower.includes("module") || pkgLower.includes("sip")) {
+    return buildGenericModule(comp);
   }
 
   // Fallback: beveled generic IC box
