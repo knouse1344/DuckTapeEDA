@@ -7,12 +7,14 @@ interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => void;
   loading: boolean;
+  refining?: boolean;
 }
 
 export default function ChatPanel({
   messages,
   onSend,
   loading,
+  refining,
 }: Props) {
   const { user } = useAuth();
   const [input, setInput] = useState("");
@@ -22,7 +24,7 @@ export default function ChatPanel({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, refining]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,36 +54,39 @@ export default function ChatPanel({
           </div>
         )}
 
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-br-md"
-                  : "bg-gray-100 text-gray-800 rounded-bl-md"
-              }`}
-            >
-              {msg.content}
-              {msg.design && (
-                <span className="inline-block ml-2 text-xs opacity-70">
-                  (design updated)
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
+        {messages.map((msg, i) => {
+          const isStreaming = loading && i === messages.length - 1 && msg.role === "assistant";
 
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex gap-1.5">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.15s]" />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.3s]" />
+          return (
+            <div
+              key={i}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white rounded-br-md"
+                    : "bg-gray-100 text-gray-800 rounded-bl-md"
+                }`}
+              >
+                {msg.content}
+                {isStreaming && (
+                  <span className="inline-block w-1.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
+                )}
+                {msg.design && !isStreaming && (
+                  <span className="inline-block ml-2 text-xs opacity-70">
+                    (design updated)
+                  </span>
+                )}
               </div>
+            </div>
+          );
+        })}
+
+        {refining && (
+          <div className="flex justify-start">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl rounded-bl-md px-4 py-2 text-xs text-amber-700">
+              Refining design...
             </div>
           </div>
         )}

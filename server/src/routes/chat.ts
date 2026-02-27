@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Response } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { getApiKey } from "../db.js";
 import { decryptApiKey } from "../crypto.js";
@@ -8,10 +9,17 @@ import { validateDesign, formatValidationFeedback } from "../lib/validateDesign.
 const router = Router();
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "dev-encryption-key";
-const MAX_RETRIES = 2; // retry up to twice — electrical checks + layout quality checks
+const MAX_RETRIES = 2;
 
 /**
- * Call the Anthropic API.
+ * Send an SSE event to the client.
+ */
+function sendSSE(res: Response, event: string, data: unknown) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * Call the Anthropic API (non-streaming, used for validation retries).
  */
 async function callClaude(
   apiKey: string,
@@ -47,6 +55,81 @@ async function callClaude(
 }
 
 /**
+ * Call the Anthropic API with streaming. Forwards text deltas to the client
+ * via SSE and returns the accumulated full text when done.
+ */
+async function callClaudeStreaming(
+  apiKey: string,
+  systemPrompt: string,
+  messages: { role: string; content: string }[],
+  res: Response
+): Promise<string> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      stream: true,
+      system: systemPrompt,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const message =
+      (error as { error?: { message?: string } })?.error?.message ||
+      `Anthropic API error: ${response.status}`;
+    const err = new Error(message) as Error & { status: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let fullText = "";
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    // Keep the last potentially incomplete line in the buffer
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr || jsonStr === "[DONE]") continue;
+
+        try {
+          const event = JSON.parse(jsonStr);
+          if (
+            event.type === "content_block_delta" &&
+            event.delta?.type === "text_delta" &&
+            event.delta.text
+          ) {
+            fullText += event.delta.text;
+            sendSSE(res, "delta", { text: event.delta.text });
+          }
+        } catch {
+          // Skip unparseable lines
+        }
+      }
+    }
+  }
+
+  return fullText;
+}
+
+/**
  * Extract JSON block from Claude's response text.
  */
 function extractJsonBlock(text: string): unknown | null {
@@ -69,7 +152,7 @@ function getResponseText(data: { content: { type: string; text?: string }[] }): 
     .join("");
 }
 
-// POST /api/chat - Smart chat with validation and self-correction
+// POST /api/chat - Streaming chat with validation and self-correction
 router.post("/", requireAuth, async (req, res) => {
   const keyData = getApiKey(req.user!.userId);
   if (!keyData) {
@@ -88,12 +171,18 @@ router.post("/", requireAuth, async (req, res) => {
     return;
   }
 
+  // Set up SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+  res.flushHeaders();
+
   const systemPrompt = buildSystemPrompt();
 
   try {
-    // First call to Claude
-    let data = await callClaude(apiKey, systemPrompt, messages);
-    let text = getResponseText(data);
+    // Stream the first Claude response to the client
+    let text = await callClaudeStreaming(apiKey, systemPrompt, messages, res);
     let design = extractJsonBlock(text);
 
     // If there's a design, validate it
@@ -105,7 +194,10 @@ router.post("/", requireAuth, async (req, res) => {
 
         console.log(`[chat] Design validation failed (${validation.errors.length} errors, ${validation.warnings.length} warnings). Retrying...`);
 
-        // Build a correction prompt and retry
+        // Tell client we're refining
+        sendSSE(res, "refining", {});
+
+        // Retry with non-streamed calls
         for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
           const correctionMessages = [
             ...messages,
@@ -116,7 +208,7 @@ router.post("/", requireAuth, async (req, res) => {
             },
           ];
 
-          data = await callClaude(apiKey, systemPrompt, correctionMessages);
+          const data = await callClaude(apiKey, systemPrompt, correctionMessages);
           text = getResponseText(data);
           design = extractJsonBlock(text);
 
@@ -132,6 +224,9 @@ router.post("/", requireAuth, async (req, res) => {
             }
           }
         }
+
+        // Send the corrected full text as a replacement
+        sendSSE(res, "replace", { text });
       } else if (validation.warnings.length > 0) {
         console.log(`[chat] Design valid with ${validation.warnings.length} warnings`);
       } else {
@@ -139,13 +234,14 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // Return the (possibly corrected) response
-    res.json(data);
+    // Signal completion
+    sendSSE(res, "done", {});
+    res.end();
   } catch (err) {
     console.error("Chat proxy error:", err);
-    const status = (err as { status?: number }).status || 500;
     const message = err instanceof Error ? err.message : "Failed to contact Claude API";
-    res.status(status).json({ error: message });
+    sendSSE(res, "error", { error: message });
+    res.end();
   }
 });
 

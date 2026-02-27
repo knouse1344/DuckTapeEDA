@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { ChatMessage, CircuitDesign } from "./types/circuit";
-import { sendMessage } from "./services/claude";
+import { sendMessageStreaming } from "./services/claude";
 import { useAuth } from "./contexts/AuthContext";
 import ChatPanel from "./components/ChatPanel";
 import DesignViewer from "./components/DesignViewer";
@@ -12,7 +12,9 @@ export default function App() {
   const [currentDesign, setCurrentDesign] = useState<CircuitDesign | null>(
     null
   );
-  const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const streamingTextRef = useRef("");
 
   // Show loading while checking auth
   if (authLoading) {
@@ -33,11 +35,38 @@ export default function App() {
 
     const userMessage: ChatMessage = { role: "user", content: text };
     const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    setLoading(true);
+
+    // Add user message + empty assistant message for streaming into
+    const placeholderAssistant: ChatMessage = { role: "assistant", content: "" };
+    setMessages([...updatedMessages, placeholderAssistant]);
+    setStreaming(true);
+    setRefining(false);
+    streamingTextRef.current = "";
 
     try {
-      const response = await sendMessage(token, updatedMessages);
+      const response = await sendMessageStreaming(
+        token,
+        updatedMessages,
+        // onDelta — append streamed text to the in-progress assistant message
+        (delta) => {
+          streamingTextRef.current += delta;
+          const currentText = streamingTextRef.current;
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: "assistant",
+              content: stripJsonBlock(currentText),
+            };
+            return updated;
+          });
+        },
+        // onRefining — show refining indicator
+        () => {
+          setRefining(true);
+        },
+      );
+
+      // Finalize with the complete response (may be replaced by validation)
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: response.text,
@@ -55,7 +84,8 @@ export default function App() {
       };
       setMessages([...updatedMessages, errorMessage]);
     } finally {
-      setLoading(false);
+      setStreaming(false);
+      setRefining(false);
     }
   };
 
@@ -89,7 +119,8 @@ export default function App() {
           <ChatPanel
             messages={messages}
             onSend={handleSend}
-            loading={loading}
+            loading={streaming}
+            refining={refining}
           />
         </div>
         <div className="w-full md:w-[60%] overflow-hidden">
@@ -98,4 +129,8 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function stripJsonBlock(text: string): string {
+  return text.replace(/```json\s*[\s\S]*?```/, "").trim();
 }
