@@ -3,6 +3,42 @@ import type { ChatMessage } from "../types/circuit";
 import { useAuth } from "../contexts/AuthContext";
 import ApiKeySettings from "./ApiKeySettings";
 
+function BouncingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="w-1.5 h-1.5 rounded-full bg-blue-500"
+          style={{
+            animation: "dotBounce 1.4s infinite ease-in-out both",
+            animationDelay: `${i * 0.16}s`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes dotBounce {
+          0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+function ElapsedTimer() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="text-[10px] text-blue-400/70 tabular-nums ml-auto pl-3">
+      {seconds}s
+    </span>
+  );
+}
+
 interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => void;
@@ -85,23 +121,33 @@ export default function ChatPanel({
           );
         })}
 
-        {buildingDesign && !refining && (
+        {loading && (
           <div className="flex justify-start">
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl rounded-bl-md px-4 py-2.5 text-xs text-blue-700 flex items-center gap-2">
-              <svg className="animate-spin h-3.5 w-3.5 text-blue-500" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Building circuit design...
+            <div
+              className="rounded-2xl rounded-bl-md px-4 py-2.5 text-xs text-blue-700 flex items-center gap-2.5 border"
+              style={{
+                background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 50%, #eff6ff 100%)",
+                backgroundSize: "200% 200%",
+                animation: "shimmer 2s ease-in-out infinite",
+                borderColor: "#bfdbfe",
+              }}
+            >
+              <BouncingDots />
+              <span className="font-medium">
+                {refining
+                  ? "Refining & validating..."
+                  : buildingDesign
+                    ? "Building circuit design..."
+                    : "Thinking..."}
+              </span>
+              <ElapsedTimer />
             </div>
-          </div>
-        )}
-
-        {refining && (
-          <div className="flex justify-start">
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl rounded-bl-md px-4 py-2 text-xs text-amber-700">
-              Refining design...
-            </div>
+            <style>{`
+              @keyframes shimmer {
+                0%, 100% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+              }
+            `}</style>
           </div>
         )}
 
