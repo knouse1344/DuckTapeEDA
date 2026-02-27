@@ -75,9 +75,16 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
 
     const group = buildComponent(comp);
     group.position.set(x, 0, z);
-    if (pos.rotation) {
+
+    // Auto-orient connectors to face off the nearest board edge
+    const isConn = comp.type === "connector";
+    if (isConn) {
+      const edgeRotation = getEdgeRotation(pos.x, pos.y, board.width, board.height);
+      group.rotation.y = (edgeRotation * Math.PI) / 180;
+    } else if (pos.rotation) {
       group.rotation.y = (pos.rotation * Math.PI) / 180;
     }
+
     scene.add(group);
   }
 }
@@ -258,7 +265,10 @@ function buildConnector(comp: Component): THREE.Group {
 
   if (isUSBC) {
     // USB-C connector: realistic oval-port metal shell
-    // The connector sits at the board edge — opening faces outward (-Z direction)
+    // Model is built with opening facing -Z at the group origin.
+    // The body extends in +Z (onto the board). A small overhang extends past
+    // the origin in -Z so the port sticks out past the board edge.
+    // Auto-rotation in buildScene orients the opening toward the nearest edge.
     const shellMat = new THREE.MeshPhongMaterial({
       color: USB_METAL,
       specular: 0xcccccc,
@@ -267,25 +277,25 @@ function buildConnector(comp: Component): THREE.Group {
     const darkMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
     const innerMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
 
-    // --- Outer metal shell (rounded rectangle via extruded shape) ---
-    const shellW = 9.0;   // width
-    const shellH = 3.4;   // height
-    const shellD = 7.2;   // depth (how far it extends)
-    const shellR = 1.2;   // corner radius for the rounded rect cross-section
+    const shellW = 9.0;   // width (X)
+    const shellH = 3.4;   // height (Y)
+    const shellD = 7.2;   // depth (Z)
+    const shellR = 1.2;   // corner radius
+    const overhang = 2.0; // mm the port sticks past the board edge
 
+    // --- Outer metal shell ---
+    // ExtrudeGeometry extrudes shape in +Z from z=0.
+    // We offset so the front face is at z = -overhang, back at z = shellD - overhang.
     const shellShape = createRoundedRectShape(shellW, shellH, shellR);
     const shellGeo = new THREE.ExtrudeGeometry(shellShape, {
       depth: shellD,
       bevelEnabled: false,
     });
     const shell = new THREE.Mesh(shellGeo, shellMat);
-    // Extrude goes in +Z; we want the opening at -Z (front)
-    // Position: center the cross-section, extrude backward from opening
-    shell.position.set(-shellW / 2, 0, -shellD / 2);
-    shell.position.y = 0;
+    shell.position.set(-shellW / 2, 0, -overhang);
     group.add(shell);
 
-    // --- Port opening (oval recess at the front) ---
+    // --- Port opening (dark oval recess at the front face) ---
     const openW = 8.2;
     const openH = 2.6;
     const openR = 1.0;
@@ -295,10 +305,10 @@ function buildConnector(comp: Component): THREE.Group {
       bevelEnabled: false,
     });
     const opening = new THREE.Mesh(openGeo, darkMat);
-    opening.position.set(-openW / 2, (shellH - openH) / 2, -shellD / 2 - 0.01);
+    opening.position.set(-openW / 2, (shellH - openH) / 2, -overhang - 0.01);
     group.add(opening);
 
-    // --- Center tongue (the thin PCB/contact strip inside) ---
+    // --- Center tongue (thin contact strip inside port) ---
     const tongueW = 6.8;
     const tongueH = 0.6;
     const tongueD = 4.5;
@@ -306,7 +316,7 @@ function buildConnector(comp: Component): THREE.Group {
       new THREE.BoxGeometry(tongueW, tongueH, tongueD),
       innerMat
     );
-    tongue.position.set(0, shellH / 2, -shellD / 2 + tongueD / 2 + 0.3);
+    tongue.position.set(0, shellH / 2, -overhang + tongueD / 2 + 0.3);
     group.add(tongue);
 
     // --- Gold contact pads on tongue (top and bottom rows) ---
@@ -318,31 +328,29 @@ function buildConnector(comp: Component): THREE.Group {
     const contactCount = 6;
     const contactSpacing = tongueW / (contactCount + 1);
     for (let i = 1; i <= contactCount; i++) {
-      const cx = -tongueW / 2 + i * contactSpacing;
-      const cz = -shellD / 2 + 1.5;
-      // Top contacts
+      const contactX = -tongueW / 2 + i * contactSpacing;
+      const contactZ = -overhang + 1.5;
       const topContact = new THREE.Mesh(
         new THREE.BoxGeometry(0.35, 0.05, 1.8),
         contactMat
       );
-      topContact.position.set(cx, shellH / 2 + tongueH / 2 + 0.01, cz);
+      topContact.position.set(contactX, shellH / 2 + tongueH / 2 + 0.01, contactZ);
       group.add(topContact);
-      // Bottom contacts
       const botContact = new THREE.Mesh(
         new THREE.BoxGeometry(0.35, 0.05, 1.8),
         contactMat
       );
-      botContact.position.set(cx, shellH / 2 - tongueH / 2 - 0.01, cz);
+      botContact.position.set(contactX, shellH / 2 - tongueH / 2 - 0.01, contactZ);
       group.add(botContact);
     }
 
-    // --- Shield mounting legs (the metal tabs that solder to the board) ---
+    // --- Shield mounting legs (metal tabs soldered to board) ---
     const legMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
     const legPositions = [
-      { x: -shellW / 2 - 0.2, z: -1 },
-      { x: shellW / 2 + 0.2, z: -1 },
-      { x: -shellW / 2 - 0.2, z: shellD / 2 - 1 },
-      { x: shellW / 2 + 0.2, z: shellD / 2 - 1 },
+      { x: -shellW / 2 - 0.2, z: -overhang + 1 },
+      { x: shellW / 2 + 0.2, z: -overhang + 1 },
+      { x: -shellW / 2 - 0.2, z: shellD - overhang - 1 },
+      { x: shellW / 2 + 0.2, z: shellD - overhang - 1 },
     ];
     for (const lp of legPositions) {
       const leg = new THREE.Mesh(
@@ -353,14 +361,14 @@ function buildConnector(comp: Component): THREE.Group {
       group.add(leg);
     }
 
-    // --- SMD solder pads (on the board surface behind the connector) ---
+    // --- SMD solder pads (on board surface behind the connector) ---
     const padMat = new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 });
     for (let i = -3; i <= 3; i += 1.0) {
       const pad = new THREE.Mesh(
         new THREE.BoxGeometry(0.45, 0.05, 1.2),
         padMat
       );
-      pad.position.set(i, 0.01, shellD / 2 + 0.5);
+      pad.position.set(i, 0.01, shellD - overhang + 0.5);
       group.add(pad);
     }
   } else {
@@ -547,6 +555,28 @@ function createRoundedRectShape(
   shape.quadraticCurveTo(0, 0, r, 0);
 
   return shape;
+}
+
+/**
+ * Determine rotation (degrees) so a connector's opening faces off the nearest board edge.
+ * The USB-C model is built with its opening facing -Z.
+ *   rotation 0   → opening faces -Z (top edge, y=0 in board coords)
+ *   rotation 90  → opening faces -X (left edge, x=0)
+ *   rotation 180 → opening faces +Z (bottom edge, y=max)
+ *   rotation 270 → opening faces +X (right edge, x=max)
+ */
+function getEdgeRotation(x: number, y: number, boardW: number, boardH: number): number {
+  const distLeft = x;
+  const distRight = boardW - x;
+  const distTop = y;
+  const distBottom = boardH - y;
+
+  const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+  if (minDist === distLeft) return 90;    // face left
+  if (minDist === distRight) return 270;  // face right
+  if (minDist === distTop) return 0;      // face top
+  return 180;                              // face bottom
 }
 
 function getLEDColor(value: string): number {
