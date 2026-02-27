@@ -257,58 +257,110 @@ function buildConnector(comp: Component): THREE.Group {
     comp.value.toLowerCase().includes("usb");
 
   if (isUSBC) {
-    // USB-C connector: metallic rectangular housing
+    // USB-C connector: realistic oval-port metal shell
+    // The connector sits at the board edge — opening faces outward (-Z direction)
     const shellMat = new THREE.MeshPhongMaterial({
       color: USB_METAL,
-      specular: 0xaaaaaa,
-      shininess: 80,
+      specular: 0xcccccc,
+      shininess: 100,
     });
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+    const innerMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
 
-    // Main body
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(9, 3.2, 7),
-      shellMat
-    );
-    body.position.y = 1.6;
-    group.add(body);
+    // --- Outer metal shell (rounded rectangle via extruded shape) ---
+    const shellW = 9.0;   // width
+    const shellH = 3.4;   // height
+    const shellD = 7.2;   // depth (how far it extends)
+    const shellR = 1.2;   // corner radius for the rounded rect cross-section
 
-    // Port opening (dark recess on the front face)
-    const opening = new THREE.Mesh(
-      new THREE.BoxGeometry(7.5, 2.2, 1),
-      new THREE.MeshPhongMaterial({ color: 0x222222 })
-    );
-    opening.position.set(0, 1.6, -3.5);
+    const shellShape = createRoundedRectShape(shellW, shellH, shellR);
+    const shellGeo = new THREE.ExtrudeGeometry(shellShape, {
+      depth: shellD,
+      bevelEnabled: false,
+    });
+    const shell = new THREE.Mesh(shellGeo, shellMat);
+    // Extrude goes in +Z; we want the opening at -Z (front)
+    // Position: center the cross-section, extrude backward from opening
+    shell.position.set(-shellW / 2, 0, -shellD / 2);
+    shell.position.y = 0;
+    group.add(shell);
+
+    // --- Port opening (oval recess at the front) ---
+    const openW = 8.2;
+    const openH = 2.6;
+    const openR = 1.0;
+    const openShape = createRoundedRectShape(openW, openH, openR);
+    const openGeo = new THREE.ExtrudeGeometry(openShape, {
+      depth: 5.5,
+      bevelEnabled: false,
+    });
+    const opening = new THREE.Mesh(openGeo, darkMat);
+    opening.position.set(-openW / 2, (shellH - openH) / 2, -shellD / 2 - 0.01);
     group.add(opening);
 
-    // Inner tongue (the center piece in USB-C)
+    // --- Center tongue (the thin PCB/contact strip inside) ---
+    const tongueW = 6.8;
+    const tongueH = 0.6;
+    const tongueD = 4.5;
     const tongue = new THREE.Mesh(
-      new THREE.BoxGeometry(6.5, 0.6, 3),
-      new THREE.MeshPhongMaterial({ color: 0x444444 })
+      new THREE.BoxGeometry(tongueW, tongueH, tongueD),
+      innerMat
     );
-    tongue.position.set(0, 1.2, -2);
+    tongue.position.set(0, shellH / 2, -shellD / 2 + tongueD / 2 + 0.3);
     group.add(tongue);
 
-    // Metal shield tabs on sides
-    const tabMat = new THREE.MeshPhongMaterial({
-      color: METAL_SILVER,
-      shininess: 60,
+    // --- Gold contact pads on tongue (top and bottom rows) ---
+    const contactMat = new THREE.MeshPhongMaterial({
+      color: 0xdaa520,
+      specular: 0xffdd44,
+      shininess: 120,
     });
-    const tabGeo = new THREE.BoxGeometry(0.5, 3.2, 1);
-    const tabL = new THREE.Mesh(tabGeo, tabMat);
-    tabL.position.set(-5, 1.6, 3);
-    group.add(tabL);
-    const tabR = new THREE.Mesh(tabGeo, tabMat);
-    tabR.position.set(5, 1.6, 3);
-    group.add(tabR);
+    const contactCount = 6;
+    const contactSpacing = tongueW / (contactCount + 1);
+    for (let i = 1; i <= contactCount; i++) {
+      const cx = -tongueW / 2 + i * contactSpacing;
+      const cz = -shellD / 2 + 1.5;
+      // Top contacts
+      const topContact = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.05, 1.8),
+        contactMat
+      );
+      topContact.position.set(cx, shellH / 2 + tongueH / 2 + 0.01, cz);
+      group.add(topContact);
+      // Bottom contacts
+      const botContact = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.05, 1.8),
+        contactMat
+      );
+      botContact.position.set(cx, shellH / 2 - tongueH / 2 - 0.01, cz);
+      group.add(botContact);
+    }
 
-    // SMD pads underneath
+    // --- Shield mounting legs (the metal tabs that solder to the board) ---
+    const legMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
+    const legPositions = [
+      { x: -shellW / 2 - 0.2, z: -1 },
+      { x: shellW / 2 + 0.2, z: -1 },
+      { x: -shellW / 2 - 0.2, z: shellD / 2 - 1 },
+      { x: shellW / 2 + 0.2, z: shellD / 2 - 1 },
+    ];
+    for (const lp of legPositions) {
+      const leg = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 1.0, 0.5),
+        legMat
+      );
+      leg.position.set(lp.x, -0.5, lp.z);
+      group.add(leg);
+    }
+
+    // --- SMD solder pads (on the board surface behind the connector) ---
     const padMat = new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 });
-    for (let i = -3; i <= 3; i += 1.5) {
+    for (let i = -3; i <= 3; i += 1.0) {
       const pad = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.05, 1),
+        new THREE.BoxGeometry(0.45, 0.05, 1.2),
         padMat
       );
-      pad.position.set(i, 0.01, 4);
+      pad.position.set(i, 0.01, shellD / 2 + 0.5);
       group.add(pad);
     }
   } else {
@@ -470,6 +522,31 @@ function drawTraces(
       scene.add(trace);
     }
   }
+}
+
+/**
+ * Create a 2D rounded rectangle shape for extrusion.
+ * Origin is at bottom-left corner.
+ */
+function createRoundedRectShape(
+  width: number,
+  height: number,
+  radius: number
+): THREE.Shape {
+  const shape = new THREE.Shape();
+  const r = Math.min(radius, width / 2, height / 2);
+
+  shape.moveTo(r, 0);
+  shape.lineTo(width - r, 0);
+  shape.quadraticCurveTo(width, 0, width, r);
+  shape.lineTo(width, height - r);
+  shape.quadraticCurveTo(width, height, width - r, height);
+  shape.lineTo(r, height);
+  shape.quadraticCurveTo(0, height, 0, height - r);
+  shape.lineTo(0, r);
+  shape.quadraticCurveTo(0, 0, r, 0);
+
+  return shape;
 }
 
 function getLEDColor(value: string): number {

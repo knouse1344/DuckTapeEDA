@@ -51,7 +51,13 @@ DESIGN RULES (CRITICAL — follow strictly)
 - Use SMD only when through-hole isn't practical (e.g. USB-C connectors, LDO regulators)
 - PCB positions are in millimeters, representing physical placement on the board
 - Keep related components close together (e.g. decoupling cap near its IC)
-- Place connectors at board edges
+- **CONNECTORS MUST be placed at board edges** — this is how real PCBs work. The plug/cable must be accessible from outside the board:
+  - USB connectors: place at x=0 (left edge) or x=board.width (right edge), with the opening facing outward off the board edge
+  - Barrel jacks: place at a board edge
+  - Pin headers: place at a board edge or near one
+  - Screw terminals: place at a board edge
+  - The connector's pcbPosition.y should be roughly centered along the edge, and pcbPosition.x should be at 0 or board.width
+  - Use rotation to orient the connector opening toward the outside of the board
 
 **Schematic Rules:**
 - Schematic positions should be on a grid of multiples of 50 for clean wiring

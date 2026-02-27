@@ -229,6 +229,31 @@ export function validateDesign(design: unknown): ValidationResult {
     }
   }
 
+  // ─── CONNECTOR PLACEMENT CHECK ─────────────────────────
+  // Connectors should be at board edges so cables can plug in from outside
+  if (board && board.width > 0 && board.height > 0) {
+    const connectorComps = components.filter((c) => c.type === "connector");
+    const edgeThreshold = 3; // mm — how close to edge counts as "at edge"
+    for (const conn of connectorComps) {
+      if (!isValidPosition(conn.pcbPosition)) continue;
+      const { x, y } = conn.pcbPosition;
+      const nearLeftEdge = x <= edgeThreshold;
+      const nearRightEdge = x >= board.width - edgeThreshold;
+      const nearTopEdge = y <= edgeThreshold;
+      const nearBottomEdge = y >= board.height - edgeThreshold;
+      const atEdge = nearLeftEdge || nearRightEdge || nearTopEdge || nearBottomEdge;
+
+      if (!atEdge) {
+        issues.push({
+          severity: "error",
+          code: "CONNECTOR_NOT_AT_EDGE",
+          message: `Connector ${conn.ref} (${conn.value}) is at PCB position (${x}, ${y}) which is not near any board edge. Connectors must be placed at a board edge so cables can plug in from outside. Move it to x=0, x=${board.width}, y=0, or y=${board.height}.`,
+          ref: conn.ref,
+        });
+      }
+    }
+  }
+
   // ─── BOARD CHECKS ───────────────────────────────────────
   if (board) {
     if (typeof board.width !== "number" || board.width <= 0 || board.width > 300) {
