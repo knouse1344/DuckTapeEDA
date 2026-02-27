@@ -321,10 +321,14 @@ export function validateDesign(design: unknown): ValidationResult {
   // through the self-correction loop, just like electrical errors.
   if (board && board.width > 0 && board.height > 0) {
     const positionedComps = components.filter((c) => isValidPosition(c.pcbPosition));
-    if (positionedComps.length >= 2) {
-      // Bounding box of all components
-      const xs = positionedComps.map((c) => c.pcbPosition.x);
-      const ys = positionedComps.map((c) => c.pcbPosition.y);
+    // Exclude connectors from centering/clustering checks — connectors are
+    // intentionally placed at board edges, so they'd skew the center calculation.
+    const nonConnectors = positionedComps.filter((c) => c.type !== "connector");
+
+    if (nonConnectors.length >= 1) {
+      // Bounding box of non-connector components only
+      const xs = nonConnectors.map((c) => c.pcbPosition.x);
+      const ys = nonConnectors.map((c) => c.pcbPosition.y);
       const minX = Math.min(...xs);
       const maxX = Math.max(...xs);
       const minY = Math.min(...ys);
@@ -334,17 +338,18 @@ export function validateDesign(design: unknown): ValidationResult {
       const boardCenterX = board.width / 2;
       const boardCenterY = board.height / 2;
 
-      // Component centering — are components roughly centered on the board?
+      // Component centering — are non-connector components roughly centered?
       const offsetX = Math.abs(clusterCenterX - boardCenterX);
       const offsetY = Math.abs(clusterCenterY - boardCenterY);
-      const maxAllowedOffsetX = board.width * 0.25;
-      const maxAllowedOffsetY = board.height * 0.25;
+      // Use 20% of board size or 3mm, whichever is larger
+      const maxAllowedOffsetX = Math.max(board.width * 0.2, 3);
+      const maxAllowedOffsetY = Math.max(board.height * 0.2, 3);
 
       if (offsetX > maxAllowedOffsetX || offsetY > maxAllowedOffsetY) {
         issues.push({
           severity: "error",
           code: "COMPONENTS_OFF_CENTER",
-          message: `Components are off-center on the board. The component cluster is centered at (${clusterCenterX.toFixed(1)}, ${clusterCenterY.toFixed(1)}) but the board center is (${boardCenterX.toFixed(1)}, ${boardCenterY.toFixed(1)}). Reposition components so they are centered on the board, or shrink the board to fit tightly around the components.`,
+          message: `Non-connector components are off-center. Their center is at (${clusterCenterX.toFixed(1)}, ${clusterCenterY.toFixed(1)}) but the board center is (${boardCenterX.toFixed(1)}, ${boardCenterY.toFixed(1)}). Reposition the IC, capacitor, resistor, and other non-connector components toward the board center. Connectors should stay at board edges.`,
         });
       }
 
@@ -361,12 +366,9 @@ export function validateDesign(design: unknown): ValidationResult {
       }
 
       // One-axis clustering — all components bunched on one side?
-      const nonConnectors = positionedComps.filter((c) => c.type !== "connector");
       if (nonConnectors.length >= 2) {
-        const ncXs = nonConnectors.map((c) => c.pcbPosition.x);
-        const ncYs = nonConnectors.map((c) => c.pcbPosition.y);
-        const ncSpanX = Math.max(...ncXs) - Math.min(...ncXs);
-        const ncSpanY = Math.max(...ncYs) - Math.min(...ncYs);
+        const ncSpanX = maxX - minX;
+        const ncSpanY = maxY - minY;
 
         // If components span less than 20% of an axis on a board > 20mm in that dimension
         if (ncSpanX < board.width * 0.2 && board.width > 20) {
