@@ -4,7 +4,6 @@ import type { CircuitDesign, Component } from "../../types/circuit";
 // Colors
 const BOARD_GREEN = 0x2d6b35;
 const COPPER = 0xb87333;
-const SOLDERMASK_DARK = 0x1a4d20;
 const SILKSCREEN = 0xffffff;
 const METAL_SILVER = 0xc0c0c0;
 const RESISTOR_BODY = 0x3b2a1a;

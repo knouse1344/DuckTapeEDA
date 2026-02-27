@@ -111,7 +111,7 @@ export default function ThreeDRenderer({ design }: Props) {
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     // Animation loop
-    let animationId: number;
+    let animationId = 0;
     function animate() {
       animationId = requestAnimationFrame(animate);
       renderer.render(scene, camera);
