@@ -6,6 +6,7 @@ import {
   updateDesign,
   getDesign,
 } from "./services/designs";
+import { checkDesign, type CheckFinding } from "./services/designCheck";
 import { useAuth } from "./contexts/AuthContext";
 import ChatPanel from "./components/ChatPanel";
 import DesignViewer from "./components/DesignViewer";
@@ -26,6 +27,12 @@ export default function App() {
   const [currentDesignId, setCurrentDesignId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
+
+  // Design check state
+  const [checking, setChecking] = useState(false);
+  const [checkFindings, setCheckFindings] = useState<CheckFinding[]>([]);
+  const [checkAiText, setCheckAiText] = useState("");
+  const checkAiRef = useRef("");
 
   // Show loading while checking auth
   if (authLoading) {
@@ -88,6 +95,7 @@ export default function App() {
 
       if (response.design) {
         setCurrentDesign(response.design);
+        clearCheckResults();
 
         // Auto-save: create or update
         try {
@@ -112,6 +120,43 @@ export default function App() {
     } finally {
       setStreaming(false);
       setRefining(false);
+    }
+  };
+
+  const clearCheckResults = () => {
+    setCheckFindings([]);
+    setCheckAiText("");
+    checkAiRef.current = "";
+  };
+
+  const handleCheckDesign = async () => {
+    if (!token || !currentDesign) return;
+
+    setChecking(true);
+    clearCheckResults();
+
+    try {
+      await checkDesign(
+        token,
+        currentDesign,
+        (findings) => setCheckFindings(findings),
+        (delta) => {
+          checkAiRef.current += delta;
+          setCheckAiText(checkAiRef.current);
+        },
+      );
+    } catch (err) {
+      setCheckFindings((prev) => [
+        ...prev,
+        {
+          severity: "error" as const,
+          category: "general",
+          title: "Check failed",
+          detail: err instanceof Error ? err.message : "Design check failed",
+        },
+      ]);
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -185,7 +230,14 @@ export default function App() {
           />
         </div>
         <div className="w-full md:w-[60%] overflow-hidden">
-          <DesignViewer design={currentDesign} />
+          <DesignViewer
+            design={currentDesign}
+            onCheckDesign={handleCheckDesign}
+            checking={checking}
+            checkFindings={checkFindings}
+            checkAiText={checkAiText}
+            onCloseCheck={clearCheckResults}
+          />
         </div>
       </div>
     </div>

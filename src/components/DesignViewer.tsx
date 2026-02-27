@@ -1,15 +1,31 @@
 import type { CircuitDesign } from "../types/circuit";
+import type { CheckFinding } from "../services/designCheck";
 import { useState } from "react";
 import ThreeDRenderer from "./threed/ThreeDRenderer";
+import DesignCheckPanel from "./DesignCheckPanel";
 
 interface Props {
   design: CircuitDesign | null;
+  onCheckDesign?: () => void;
+  checking?: boolean;
+  checkFindings?: CheckFinding[];
+  checkAiText?: string;
+  onCloseCheck?: () => void;
 }
 
 type Tab = "schematic" | "pcb" | "3d";
 
-export default function DesignViewer({ design }: Props) {
+export default function DesignViewer({
+  design,
+  onCheckDesign,
+  checking = false,
+  checkFindings = [],
+  checkAiText = "",
+  onCloseCheck,
+}: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("3d");
+
+  const showCheckPanel = checking || checkFindings.length > 0 || checkAiText.length > 0;
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "schematic", label: "Schematic" },
@@ -24,9 +40,13 @@ export default function DesignViewer({ design }: Props) {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              // Close check panel when switching tabs
+              if (showCheckPanel && onCloseCheck) onCloseCheck();
+            }}
             className={`px-6 py-3 text-sm font-medium transition-colors ${
-              activeTab === tab.id
+              activeTab === tab.id && !showCheckPanel
                 ? "text-blue-600 border-b-2 border-blue-600"
                 : "text-gray-500 hover:text-gray-700"
             }`}
@@ -35,9 +55,22 @@ export default function DesignViewer({ design }: Props) {
           </button>
         ))}
 
-        {/* Export buttons */}
+        {/* Check Design button + Export buttons */}
         {design && (
           <div className="ml-auto flex items-center gap-2 pr-4">
+            <button
+              onClick={onCheckDesign}
+              disabled={checking || !onCheckDesign}
+              className={`text-xs px-3 py-1.5 rounded font-medium transition-colors ${
+                checking
+                  ? "bg-blue-100 text-blue-500 cursor-wait"
+                  : showCheckPanel
+                    ? "bg-blue-600 text-white"
+                    : "border border-blue-300 text-blue-600 hover:bg-blue-50"
+              } disabled:opacity-50`}
+            >
+              {checking ? "Checking..." : "Check Design"}
+            </button>
             <button
               disabled
               className="text-xs px-3 py-1.5 border border-gray-300 rounded text-gray-400 cursor-not-allowed"
@@ -56,7 +89,14 @@ export default function DesignViewer({ design }: Props) {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {!design ? (
+        {showCheckPanel ? (
+          <DesignCheckPanel
+            findings={checkFindings}
+            aiAnalysis={checkAiText}
+            checking={checking}
+            onClose={onCloseCheck || (() => {})}
+          />
+        ) : !design ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             <div className="text-center">
               <div className="text-4xl mb-3">&#9889;</div>
