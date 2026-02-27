@@ -1,5 +1,4 @@
 import type { CircuitDesign, ChatMessage } from "../types/circuit";
-import { SYSTEM_PROMPT } from "./prompt";
 
 interface ClaudeResponse {
   text: string;
@@ -7,26 +6,16 @@ interface ClaudeResponse {
 }
 
 export async function sendMessage(
-  apiKey: string,
+  token: string,
   messages: ChatMessage[]
 ): Promise<ClaudeResponse> {
-  // Use proxy in dev, direct API in production
-  const apiUrl = import.meta.env.DEV
-    ? "/api/claude/v1/messages"
-    : "https://api.anthropic.com/v1/messages";
-
-  const response = await fetch(apiUrl, {
+  const response = await fetch("/api/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -37,7 +26,7 @@ export async function sendMessage(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     const message =
-      error?.error?.message || `API error: ${response.status}`;
+      (error as { error?: string })?.error || `API error: ${response.status}`;
     throw new Error(message);
   }
 

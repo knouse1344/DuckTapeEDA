@@ -6,11 +6,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api/claude': {
-        target: 'https://api.anthropic.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/claude/, ''),
-      },
+      '/auth': 'http://localhost:3001',
+      '/api': 'http://localhost:3001',
     },
   },
 })
