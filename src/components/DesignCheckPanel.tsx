@@ -188,8 +188,8 @@ export default function DesignCheckPanel({ findings, aiAnalysis, checking, onClo
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto px-5 py-4 space-y-5">
-        {/* Score + Verdict card — appears once AI streaming finishes */}
-        {score !== null && (
+        {/* Score + Verdict card — skeleton while checking, filled once AI finishes */}
+        {score !== null ? (
           <div className={`flex items-center gap-5 p-4 rounded-xl border ${scoreCardClass}`}>
             <ScoreRing score={score} />
             <div className="min-w-0">
@@ -201,7 +201,27 @@ export default function DesignCheckPanel({ findings, aiAnalysis, checking, onClo
               </p>
             </div>
           </div>
-        )}
+        ) : checking ? (
+          <div className="flex items-center gap-5 p-4 rounded-xl border border-gray-200 bg-gray-50/60">
+            {/* Pulsing placeholder ring */}
+            <div className="flex-shrink-0 animate-pulse">
+              <svg width="88" height="88" viewBox="0 0 88 88">
+                <circle cx="44" cy="44" r="36" fill="#f3f4f6" stroke="#e5e7eb" strokeWidth="5" />
+                <text x="44" y="46" textAnchor="middle" dominantBaseline="middle" fill="#9ca3af" fontSize="13">
+                  ...
+                </text>
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                Verdict
+              </p>
+              <p className="text-sm text-gray-400 italic">
+                Reviewing your design...
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {/* Rule-based findings */}
         {findings.length > 0 && (
