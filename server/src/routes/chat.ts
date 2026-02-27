@@ -2,67 +2,74 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { getApiKey } from "../db.js";
 import { decryptApiKey } from "../crypto.js";
+import { buildSystemPrompt } from "../lib/buildPrompt.js";
+import { validateDesign, formatValidationFeedback } from "../lib/validateDesign.js";
 
 const router = Router();
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "dev-encryption-key";
+const MAX_RETRIES = 1; // retry once on validation failure
 
-const SYSTEM_PROMPT = `You are DuckTape EDA, an expert electrical engineer that designs simple PCBs.
-Tagline: "Hold your circuits together."
+/**
+ * Call the Anthropic API.
+ */
+async function callClaude(
+  apiKey: string,
+  systemPrompt: string,
+  messages: { role: string; content: string }[]
+): Promise<{ content: { type: string; text?: string }[]; stop_reason: string }> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      system: systemPrompt,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    }),
+  });
 
-When the user describes a board, respond with TWO things:
-1. A brief, friendly explanation of the design (2-3 sentences max)
-2. A complete CircuitDesign JSON block
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const message =
+      (error as { error?: { message?: string } })?.error?.message ||
+      `Anthropic API error: ${response.status}`;
+    const err = new Error(message) as Error & { status: number };
+    err.status = response.status;
+    throw err;
+  }
 
-Design rules:
-- Use the absolute minimum components needed
-- Prefer through-hole for hobbyist builds unless SMD makes more sense
-- Always include required support components (current limiting resistors for LEDs, decoupling caps for ICs, etc.)
-- Provide real component values and packages
-- Position components logically for both schematic and PCB layout
-- Board size should be compact but hand-solderable
-- Schematic positions should space components on a grid (multiples of 50) for clean wiring
-- PCB positions should be in millimeters representing physical placement on the board
-
-Output the JSON inside a \`\`\`json code fence after your explanation.
-
-The JSON must conform to this TypeScript interface:
-
-interface CircuitDesign {
-  name: string;
-  description: string;
-  components: {
-    ref: string;
-    type: "resistor" | "capacitor" | "led" | "diode" | "connector" | "ic" | "mosfet" | "switch" | "regulator";
-    value: string;
-    package: string;
-    partNumber?: string;
-    description: string;
-    pins: {
-      id: string;
-      name: string;
-      type: "power" | "ground" | "signal" | "passive";
-    }[];
-    schematicPosition: { x: number; y: number; rotation: number };
-    pcbPosition: { x: number; y: number; rotation: number };
-  }[];
-  connections: {
-    netName: string;
-    pins: { ref: string; pin: string }[];
-    traceWidth?: number;
-  }[];
-  board: {
-    width: number;
-    height: number;
-    layers: 2;
-    cornerRadius: number;
-  };
-  notes: string[];
+  return response.json();
 }
 
-When refining an existing design based on follow-up messages, output the complete updated CircuitDesign JSON (not a partial diff).`;
+/**
+ * Extract JSON block from Claude's response text.
+ */
+function extractJsonBlock(text: string): unknown | null {
+  const match = text.match(/```json\s*([\s\S]*?)```/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
 
-// POST /api/chat - Proxy chat messages to Claude API
+/**
+ * Get the full text from a Claude response.
+ */
+function getResponseText(data: { content: { type: string; text?: string }[] }): string {
+  return data.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text || "")
+    .join("");
+}
+
+// POST /api/chat - Smart chat with validation and self-correction
 router.post("/", requireAuth, async (req, res) => {
   const keyData = getApiKey(req.user!.userId);
   if (!keyData) {
@@ -81,39 +88,64 @@ router.post("/", requireAuth, async (req, res) => {
     return;
   }
 
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      }),
-    });
+  const systemPrompt = buildSystemPrompt();
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      const message =
-        (error as { error?: { message?: string } })?.error?.message ||
-        `Anthropic API error: ${response.status}`;
-      res.status(response.status).json({ error: message });
-      return;
+  try {
+    // First call to Claude
+    let data = await callClaude(apiKey, systemPrompt, messages);
+    let text = getResponseText(data);
+    let design = extractJsonBlock(text);
+
+    // If there's a design, validate it
+    if (design) {
+      const validation = validateDesign(design);
+
+      if (!validation.valid && validation.errors.length > 0) {
+        const feedback = formatValidationFeedback(validation);
+
+        console.log(`[chat] Design validation failed (${validation.errors.length} errors, ${validation.warnings.length} warnings). Retrying...`);
+
+        // Build a correction prompt and retry
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          const correctionMessages = [
+            ...messages,
+            { role: "assistant" as const, content: text },
+            {
+              role: "user" as const,
+              content: `Your design has validation errors. Please fix them and output the corrected complete CircuitDesign JSON.\n\n${feedback}`,
+            },
+          ];
+
+          data = await callClaude(apiKey, systemPrompt, correctionMessages);
+          text = getResponseText(data);
+          design = extractJsonBlock(text);
+
+          if (design) {
+            const recheck = validateDesign(design);
+            if (recheck.valid) {
+              console.log(`[chat] Design corrected successfully on retry ${attempt + 1}`);
+              break;
+            }
+
+            if (attempt === MAX_RETRIES - 1) {
+              console.log(`[chat] Design still has ${recheck.errors.length} errors after ${MAX_RETRIES} retries. Returning as-is.`);
+            }
+          }
+        }
+      } else if (validation.warnings.length > 0) {
+        console.log(`[chat] Design valid with ${validation.warnings.length} warnings`);
+      } else {
+        console.log("[chat] Design valid, no issues");
+      }
     }
 
-    const data = await response.json();
+    // Return the (possibly corrected) response
     res.json(data);
   } catch (err) {
     console.error("Chat proxy error:", err);
-    res.status(500).json({ error: "Failed to contact Claude API" });
+    const status = (err as { status?: number }).status || 500;
+    const message = err instanceof Error ? err.message : "Failed to contact Claude API";
+    res.status(status).json({ error: message });
   }
 });
 
