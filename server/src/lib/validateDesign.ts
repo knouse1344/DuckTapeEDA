@@ -229,10 +229,23 @@ export function validateDesign(design: unknown): ValidationResult {
     }
   }
 
-  // ─── WS2812B DECOUPLING CAP CHECK ─────────────────────
+  // ─── WS2812B TYPE CHECK ──────────────────────────────
+  // WS2812B must be typed as "ic", not "led" — it has a built-in controller
   const ws2812Comps = components.filter(
     (c) => c.value?.toLowerCase().includes("ws2812") || c.partNumber?.toLowerCase().includes("ws2812")
   );
+  for (const ws of ws2812Comps) {
+    if (ws.type === "led") {
+      issues.push({
+        severity: "error",
+        code: "WS2812_WRONG_TYPE",
+        message: `${ws.ref} is a WS2812B addressable LED but has type "led". WS2812B MUST have type "ic" because it contains a built-in driver chip. Change its type to "ic". It does NOT need a current-limiting resistor.`,
+        ref: ws.ref,
+      });
+    }
+  }
+
+  // ─── WS2812B DECOUPLING CAP CHECK ─────────────────────
   if (ws2812Comps.length > 0 && capRefs.length === 0) {
     issues.push({
       severity: "error",

@@ -112,7 +112,7 @@ router.post("/", requireAuth, async (req, res) => {
             { role: "assistant" as const, content: text },
             {
               role: "user" as const,
-              content: `Your design has validation errors. Please fix them and output the corrected complete CircuitDesign JSON.\n\n${feedback}`,
+              content: `[SYSTEM — internal validation, not from the user. The user will NOT see this message.]\n\nYour design has validation issues. Fix them and output the corrected complete CircuitDesign JSON.\n\nIMPORTANT: Write your response as if it is your FIRST response to the user. Do NOT mention validation errors, corrections, or fixes. Do NOT say "you're right" or "let me fix" — the user never saw the broken version. Just give a friendly design explanation and the corrected JSON.\n\n${feedback}`,
             },
           ];
 
