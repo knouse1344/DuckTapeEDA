@@ -20,6 +20,14 @@ const LED_BLUE = 0x1a8cff;
 const LED_YELLOW = 0xffdd00;
 const LED_WHITE = 0xffffee;
 const USB_METAL = 0x888888;
+const HASL_COLOR = 0xd4a847;
+const HASL_SPECULAR = 0xffdd88;
+const ELECTROLYTIC_BODY = 0x1a2a3a;
+const ELECTROLYTIC_STRIPE = 0xdddddd;
+const ELECTROLYTIC_TOP = 0x555566;
+
+// Module-level silkscreen color (set per buildScene call, used by addLabel)
+let currentSilkColor = SILKSCREEN;
 
 export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
   const { board } = design;
@@ -41,8 +49,6 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
       depth: boardThickness,
       bevelEnabled: false,
     });
-    // ExtrudeGeometry creates shape in XY, extruded along Z.
-    // We need it in XZ (horizontal), so rotate -90° around X, then center it.
     const boardMat = new THREE.MeshPhongMaterial({
       color: boardColor,
       specular: 0x111111,
@@ -50,8 +56,6 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
     });
     boardMesh = new THREE.Mesh(boardGeo, boardMat);
     boardMesh.rotation.x = -Math.PI / 2;
-    // After -90° X rotation, extrusion goes upward (+Y). Shift down by
-    // boardThickness so the top surface sits at y=0 (matching the plain box case).
     boardMesh.position.set(-board.width / 2, -boardThickness, board.height / 2);
   } else {
     const boardGeo = new THREE.BoxGeometry(board.width, boardThickness, board.height);
@@ -67,6 +71,7 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
 
   // Silkscreen color adapts to board — white on dark boards, dark on light boards
   const silkColor = (board.color === "white") ? 0x222222 : SILKSCREEN;
+  currentSilkColor = silkColor;
 
   // Bottom copper layer (thin plane underneath)
   const copperGeo = new THREE.BoxGeometry(
@@ -139,17 +144,19 @@ function buildComponent(comp: Component): THREE.Group {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Component builders
+// ---------------------------------------------------------------------------
+
 function buildResistor(comp: Component): THREE.Group {
   const group = new THREE.Group();
   const isSMD = comp.package.includes("0805") || comp.package.includes("0603") || comp.package.includes("0402");
 
   if (isSMD) {
-    // SMD resistor: small dark rectangle
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(2, 0.5, 1.2),
+    // SMD resistor: beveled dark rectangle with metal end caps
+    const body = makeBeveledBox(2, 0.5, 1.2, 0.08,
       new THREE.MeshPhongMaterial({ color: RESISTOR_BODY })
     );
-    body.position.y = 0.25;
     group.add(body);
 
     // End caps (metal terminations)
@@ -163,6 +170,12 @@ function buildResistor(comp: Component): THREE.Group {
     const capR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.2), capMat);
     capR.position.set(0.9, 0.25, 0);
     group.add(capR);
+
+    // SMD pads
+    addRectPad(group, -0.9, 0, 0.6, 1.2);
+    addRectPad(group, 0.9, 0, 0.6, 1.2);
+
+    addLabel(group, comp.ref, 0, 1.2);
   } else {
     // Through-hole resistor: cylinder body with wire leads
     const body = new THREE.Mesh(
@@ -198,10 +211,9 @@ function buildResistor(comp: Component): THREE.Group {
     // Pads
     addPad(group, -2, 0);
     addPad(group, 2, 0);
-  }
 
-  // Silkscreen label
-  addLabel(group, comp.ref, 0, 0);
+    addLabel(group, comp.ref, 0, 2.0);
+  }
 
   return group;
 }
@@ -212,9 +224,8 @@ function buildLED(comp: Component): THREE.Group {
   const isSMD = comp.package.includes("0805") || comp.package.includes("0603");
 
   if (isSMD) {
-    // SMD LED
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(2, 0.8, 1.2),
+    // SMD LED: beveled colored body
+    const body = makeBeveledBox(2, 0.8, 1.2, 0.06,
       new THREE.MeshPhongMaterial({
         color,
         emissive: color,
@@ -223,8 +234,13 @@ function buildLED(comp: Component): THREE.Group {
         opacity: 0.85,
       })
     );
-    body.position.y = 0.4;
     group.add(body);
+
+    // SMD pads
+    addRectPad(group, -0.9, 0, 0.6, 1.2);
+    addRectPad(group, 0.9, 0, 0.6, 1.2);
+
+    addLabel(group, comp.ref, 0, 1.2);
   } else {
     // 5mm through-hole LED: dome-topped cylinder
     // Clear/colored dome
@@ -284,9 +300,10 @@ function buildLED(comp: Component): THREE.Group {
     // Pads
     addPad(group, 0.6, 0);
     addPad(group, -0.6, 0);
+
+    addLabel(group, comp.ref, 0, 4.0);
   }
 
-  addLabel(group, comp.ref, 0, 0);
   return group;
 }
 
@@ -360,12 +377,7 @@ function buildConnector(comp: Component): THREE.Group {
       group.add(pin);
 
       // Solder pad on board surface
-      const pad = new THREE.Mesh(
-        new THREE.BoxGeometry(1.2, 0.05, 1.5),
-        new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 })
-      );
-      pad.position.set(pinX, 0.01, housingD / 2 + 1.0);
-      group.add(pad);
+      addRectPad(group, pinX, housingD / 2 + 1.0, 1.2, 1.5);
     }
 
     // Side retention clips
@@ -380,10 +392,6 @@ function buildConnector(comp: Component): THREE.Group {
     }
   } else if (isUSBC) {
     // USB-C connector: realistic oval-port metal shell
-    // Model is built with opening facing -Z at the group origin.
-    // The body extends in +Z (onto the board). A small overhang extends past
-    // the origin in -Z so the port sticks out past the board edge.
-    // Auto-rotation in buildScene orients the opening toward the nearest edge.
     const shellMat = new THREE.MeshPhongMaterial({
       color: USB_METAL,
       specular: 0xcccccc,
@@ -399,8 +407,6 @@ function buildConnector(comp: Component): THREE.Group {
     const overhang = 2.0; // mm the port sticks past the board edge
 
     // --- Outer metal shell ---
-    // ExtrudeGeometry extrudes shape in +Z from z=0.
-    // We offset so the front face is at z = -overhang, back at z = shellD - overhang.
     const shellShape = createRoundedRectShape(shellW, shellH, shellR);
     const shellGeo = new THREE.ExtrudeGeometry(shellShape, {
       depth: shellD,
@@ -477,14 +483,8 @@ function buildConnector(comp: Component): THREE.Group {
     }
 
     // --- SMD solder pads (on board surface behind the connector) ---
-    const padMat = new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 });
     for (let i = -3; i <= 3; i += 1.0) {
-      const pad = new THREE.Mesh(
-        new THREE.BoxGeometry(0.45, 0.05, 1.2),
-        padMat
-      );
-      pad.position.set(i, 0.01, shellD - overhang + 0.5);
-      group.add(pad);
+      addRectPad(group, i, shellD - overhang + 0.5, 0.45, 1.2);
     }
   } else {
     // Generic connector: simple pin header
@@ -501,14 +501,19 @@ function buildConnector(comp: Component): THREE.Group {
 }
 
 function buildCapacitor(comp: Component): THREE.Group {
-  const group = new THREE.Group();
+  const pkgLower = comp.package.toLowerCase();
+  const isSMD = pkgLower.includes("0805") || pkgLower.includes("0603") || pkgLower.includes("0402");
 
-  // SMD capacitor: small tan/yellow box
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 0.8, 1.2),
+  if (!isSMD) {
+    // Through-hole capacitor — render as electrolytic
+    return buildElectrolyticCapacitor(comp);
+  }
+
+  // SMD capacitor: beveled tan/yellow box
+  const group = new THREE.Group();
+  const body = makeBeveledBox(2, 0.8, 1.2, 0.06,
     new THREE.MeshPhongMaterial({ color: 0xc4a84d })
   );
-  body.position.y = 0.4;
   group.add(body);
 
   const capMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
@@ -519,18 +524,106 @@ function buildCapacitor(comp: Component): THREE.Group {
   capR.position.set(0.9, 0.4, 0);
   group.add(capR);
 
-  addLabel(group, comp.ref, 0, 0);
+  // SMD pads
+  addRectPad(group, -0.9, 0, 0.5, 1.2);
+  addRectPad(group, 0.9, 0, 0.5, 1.2);
+
+  addLabel(group, comp.ref, 0, 1.2);
+  return group;
+}
+
+function buildElectrolyticCapacitor(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const uF = parseCapacitance(comp.value);
+
+  // Size scales with capacitance
+  let radius: number, height: number;
+  if (uF <= 10) { radius = 2.5; height = 5; }
+  else if (uF <= 100) { radius = 3.0; height = 7; }
+  else if (uF <= 470) { radius = 4.0; height = 9; }
+  else { radius = 5.0; height = 11; }
+
+  // Cylindrical aluminum body
+  const bodyMat = new THREE.MeshPhongMaterial({
+    color: ELECTROLYTIC_BODY,
+    specular: 0x333333,
+    shininess: 50,
+  });
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, height, 24),
+    bodyMat
+  );
+  body.position.y = height / 2 + 0.5;
+  group.add(body);
+
+  // Sleeve wrap (slightly larger, gives the rubber-sleeve look)
+  const sleeveMat = new THREE.MeshPhongMaterial({
+    color: 0x0d1b2a,
+    specular: 0x111111,
+    shininess: 15,
+  });
+  const sleeve = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius + 0.05, radius + 0.05, height - 0.6, 24),
+    sleeveMat
+  );
+  sleeve.position.y = height / 2 + 0.5;
+  group.add(sleeve);
+
+  // Top cap (crimped aluminum)
+  const topCap = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius - 0.2, radius - 0.2, 0.3, 24),
+    new THREE.MeshPhongMaterial({ color: ELECTROLYTIC_TOP, specular: 0x444444, shininess: 60 })
+  );
+  topCap.position.y = height + 0.5;
+  group.add(topCap);
+
+  // Cross-score vent lines on top
+  const scoreMat = new THREE.MeshPhongMaterial({ color: 0x444455 });
+  const scoreLen = radius * 1.4;
+  for (const rot of [0, Math.PI / 2]) {
+    const score = new THREE.Mesh(
+      new THREE.BoxGeometry(scoreLen, 0.05, 0.15),
+      scoreMat
+    );
+    score.position.y = height + 0.66;
+    score.rotation.y = rot;
+    group.add(score);
+  }
+
+  // White polarity stripe
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(0.3, height * 0.7, radius * 0.5),
+    new THREE.MeshPhongMaterial({ color: ELECTROLYTIC_STRIPE })
+  );
+  stripe.position.set(-(radius - 0.05), height / 2 + 0.5, 0);
+  group.add(stripe);
+
+  // Wire leads
+  const leadSpacing = Math.min(radius * 0.8, 2.5);
+  const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
+  const wireGeo = new THREE.CylinderGeometry(0.15, 0.15, 2, 8);
+  const wireL = new THREE.Mesh(wireGeo, wireMat);
+  wireL.position.set(-leadSpacing / 2, -0.5, 0);
+  group.add(wireL);
+  const wireR = new THREE.Mesh(wireGeo, wireMat);
+  wireR.position.set(leadSpacing / 2, -0.5, 0);
+  group.add(wireR);
+
+  // Pads
+  addPad(group, -leadSpacing / 2, 0);
+  addPad(group, leadSpacing / 2, 0);
+
+  addLabel(group, comp.ref, 0, radius + 1.5);
   return group;
 }
 
 function buildDiode(comp: Component): THREE.Group {
   const group = new THREE.Group();
 
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(3, 1.5, 1.5),
+  // Beveled black body
+  const body = makeBeveledBox(3, 1.5, 1.5, 0.1,
     new THREE.MeshPhongMaterial({ color: 0x222222 })
   );
-  body.position.y = 0.75;
   group.add(body);
 
   // Cathode band
@@ -541,7 +634,23 @@ function buildDiode(comp: Component): THREE.Group {
   band.position.set(-1, 0.75, 0);
   group.add(band);
 
-  addLabel(group, comp.ref, 0, 0);
+  // Wire leads
+  const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
+  const wireGeo = new THREE.CylinderGeometry(0.15, 0.15, 2, 8);
+  const wireL = new THREE.Mesh(wireGeo, wireMat);
+  wireL.rotation.z = Math.PI / 2;
+  wireL.position.set(-2.5, 0.75, 0);
+  group.add(wireL);
+  const wireR = new THREE.Mesh(wireGeo, wireMat);
+  wireR.rotation.z = Math.PI / 2;
+  wireR.position.set(2.5, 0.75, 0);
+  group.add(wireR);
+
+  // Pads
+  addPad(group, -2.5, 0);
+  addPad(group, 2.5, 0);
+
+  addLabel(group, comp.ref, 0, 1.5);
   return group;
 }
 
@@ -553,13 +662,9 @@ function buildWS2812B(comp: Component): THREE.Group {
   const bodyD = 5.0;
   const bodyH = 1.6;
 
-  // White ceramic/plastic body
+  // White ceramic/plastic body — beveled
   const bodyMat = new THREE.MeshPhongMaterial({ color: 0xf0f0f0, specular: 0x444444, shininess: 40 });
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(bodyW, bodyH, bodyD),
-    bodyMat
-  );
-  body.position.y = bodyH / 2;
+  const body = makeBeveledBox(bodyW, bodyH, bodyD, 0.15, bodyMat);
   group.add(body);
 
   // LED lens on top — translucent dome area (square with rounded feel)
@@ -591,7 +696,6 @@ function buildWS2812B(comp: Component): THREE.Group {
   group.add(marker);
 
   // SMD solder pads — 4 pads on the bottom edges
-  const padMat = new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 });
   const padPositions = [
     { x: -2.1, z: -1.6 },  // Pin 1 (VDD)
     { x: -2.1, z: 1.6 },   // Pin 2 (DOUT)
@@ -599,34 +703,31 @@ function buildWS2812B(comp: Component): THREE.Group {
     { x: 2.1, z: -1.6 },   // Pin 4 (DIN)
   ];
   for (const pp of padPositions) {
-    const pad = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.05, 1.0),
-      padMat
-    );
-    pad.position.set(pp.x, 0.01, pp.z);
-    group.add(pad);
+    addRectPad(group, pp.x, pp.z, 1.2, 1.0);
   }
 
   // Thermal pad underneath (center)
-  const thermalPad = new THREE.Mesh(
-    new THREE.BoxGeometry(3.2, 0.05, 3.2),
-    padMat
-  );
-  thermalPad.position.set(0, 0.01, 0);
-  group.add(thermalPad);
+  addRectPad(group, 0, 0, 3.2, 3.2);
 
-  addLabel(group, comp.ref, 0, 0);
+  addLabel(group, comp.ref, 0, 3.5);
   return group;
 }
 
 function buildGenericIC(comp: Component): THREE.Group {
-  const group = new THREE.Group();
+  const pkgLower = comp.package.toLowerCase();
 
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(5, 1.5, 5),
-    new THREE.MeshPhongMaterial({ color: 0x1a1a1a })
-  );
-  body.position.y = 0.75;
+  // Dispatch to specific IC package builders
+  if (pkgLower.includes("dip") && !pkgLower.includes("module")) {
+    return buildDIP(comp);
+  }
+  if (pkgLower.includes("soic") || pkgLower.includes("sop") || pkgLower.includes("ssop")) {
+    return buildSOIC(comp);
+  }
+
+  // Fallback: beveled generic IC box
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
+  const body = makeBeveledBox(5, 1.5, 5, 0.12, bodyMat);
   group.add(body);
 
   // Pin 1 dot
@@ -638,29 +739,233 @@ function buildGenericIC(comp: Component): THREE.Group {
   dot.position.set(-1.8, 1.51, -1.8);
   group.add(dot);
 
-  addLabel(group, comp.ref, 0, 0);
+  addLabel(group, comp.ref, 0, 4);
   return group;
 }
 
+function buildDIP(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pkgLower = comp.package.toLowerCase();
+  const pinCount = comp.pins?.length || parseInt(pkgLower.match(/dip-?(\d+)/i)?.[1] || "8");
+  const pinsPerSide = Math.ceil(pinCount / 2);
+  const pitch = 2.54;
+  const rowSpacing = 7.62; // 300-mil DIP standard
+  const bodyW = 6.35;
+  const bodyH = 3.5;
+  const bodyD = (pinsPerSide - 1) * pitch + 2.0;
+
+  // Black plastic body with beveled edges
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
+  const body = makeBeveledBox(bodyW, bodyH, bodyD, 0.15, bodyMat);
+  group.add(body);
+
+  // Pin 1 notch (semicircular indent at one end of the top face)
+  const notchGeo = new THREE.CylinderGeometry(0.8, 0.8, 0.1, 16, 1, false, 0, Math.PI);
+  const notch = new THREE.Mesh(
+    notchGeo,
+    new THREE.MeshPhongMaterial({ color: 0x333333 })
+  );
+  notch.rotation.x = -Math.PI / 2;
+  notch.position.set(0, bodyH + 0.01, -bodyD / 2 + 0.5);
+  group.add(notch);
+
+  // Pin 1 dot
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.3, 12),
+    new THREE.MeshBasicMaterial({ color: SILKSCREEN })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.set(-bodyW / 2 + 0.8, bodyH + 0.02, -bodyD / 2 + 0.8);
+  group.add(dot);
+
+  // Through-hole pins (two rows of rectangular pins)
+  const pinMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
+  for (let i = 0; i < pinsPerSide; i++) {
+    const pinZ = -bodyD / 2 + 1.0 + i * pitch;
+
+    // Left row pin — extends from below board up to body
+    const leftPin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 2.5, 0.25),
+      pinMat
+    );
+    leftPin.position.set(-rowSpacing / 2, -0.25, pinZ);
+    group.add(leftPin);
+    addPad(group, -rowSpacing / 2, pinZ);
+
+    // Right row pin
+    const rightPin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 2.5, 0.25),
+      pinMat
+    );
+    rightPin.position.set(rowSpacing / 2, -0.25, pinZ);
+    group.add(rightPin);
+    addPad(group, rowSpacing / 2, pinZ);
+  }
+
+  addLabel(group, comp.ref, 0, bodyD / 2 + 1.5);
+  return group;
+}
+
+function buildSOIC(comp: Component): THREE.Group {
+  const group = new THREE.Group();
+  const pkgLower = comp.package.toLowerCase();
+  const pinCount = comp.pins?.length || parseInt(pkgLower.match(/soic-?(\d+)/i)?.[1] || "8");
+  const pinsPerSide = Math.ceil(pinCount / 2);
+  const pitch = 1.27;
+  const bodyW = 4.0;
+  const bodyH = 1.75;
+  const bodyD = (pinsPerSide - 1) * pitch + 2.0;
+
+  // Black plastic body with beveled edges
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
+  const body = makeBeveledBox(bodyW, bodyH, bodyD, 0.1, bodyMat);
+  group.add(body);
+
+  // Pin 1 dot
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.2, 12),
+    new THREE.MeshBasicMaterial({ color: SILKSCREEN })
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.set(-bodyW / 2 + 0.6, bodyH + 0.01, -bodyD / 2 + 0.6);
+  group.add(dot);
+
+  // Gull-wing leads (two rows)
+  const leadMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
+  for (let i = 0; i < pinsPerSide; i++) {
+    const pinZ = -bodyD / 2 + 1.0 + i * pitch;
+
+    for (const side of [-1, 1]) {
+      // Horizontal arm extending from body side
+      const arm = new THREE.Mesh(
+        new THREE.BoxGeometry(1.0, 0.15, 0.35),
+        leadMat
+      );
+      arm.position.set(side * (bodyW / 2 + 0.5), bodyH * 0.4, pinZ);
+      group.add(arm);
+
+      // Foot resting on the board surface
+      const foot = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.08, 0.35),
+        leadMat
+      );
+      foot.position.set(side * (bodyW / 2 + 0.9), 0.04, pinZ);
+      group.add(foot);
+
+      // Solder pad
+      addRectPad(group, side * (bodyW / 2 + 0.9), pinZ, 0.8, 0.5);
+    }
+  }
+
+  addLabel(group, comp.ref, 0, bodyD / 2 + 1.5);
+  return group;
+}
+
+// ---------------------------------------------------------------------------
+// Pad helpers
+// ---------------------------------------------------------------------------
+
 function addPad(group: THREE.Group, x: number, z: number) {
+  // Through-hole pad with HASL finish
   const pad = new THREE.Mesh(
     new THREE.CylinderGeometry(0.6, 0.6, 0.05, 12),
-    new THREE.MeshPhongMaterial({ color: COPPER, shininess: 60 })
+    new THREE.MeshPhongMaterial({ color: HASL_COLOR, specular: HASL_SPECULAR, shininess: 100 })
+  );
+  pad.position.set(x, 0.01, z);
+  group.add(pad);
+
+  // Drill hole (dark center)
+  const hole = new THREE.Mesh(
+    new THREE.CircleGeometry(0.25, 8),
+    new THREE.MeshBasicMaterial({ color: 0x222222 })
+  );
+  hole.rotation.x = -Math.PI / 2;
+  hole.position.set(x, 0.04, z);
+  group.add(hole);
+}
+
+function addRectPad(group: THREE.Group, x: number, z: number, w: number, d: number) {
+  const pad = new THREE.Mesh(
+    new THREE.BoxGeometry(w, 0.05, d),
+    new THREE.MeshPhongMaterial({ color: HASL_COLOR, specular: HASL_SPECULAR, shininess: 100 })
   );
   pad.position.set(x, 0.01, z);
   group.add(pad);
 }
 
-function addLabel(
-  _group: THREE.Group,
-  _text: string,
-  _x: number,
-  _z: number
-) {
-  // Text rendering in Three.js requires font loading.
-  // For now, labels are omitted — they'll show in the PCB/schematic SVG views.
-  // Could add canvas-texture text labels later.
+// ---------------------------------------------------------------------------
+// Silkscreen labels (canvas-texture text on the board surface)
+// ---------------------------------------------------------------------------
+
+function addLabel(group: THREE.Group, text: string, x: number, z: number) {
+  if (!text) return;
+
+  const canvas = document.createElement("canvas");
+  const fontSize = 64;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // Measure text to size canvas
+  ctx.font = `bold ${fontSize}px monospace`;
+  const metrics = ctx.measureText(text);
+  const textW = metrics.width;
+
+  canvas.width = nextPowerOfTwo(textW + 24);
+  canvas.height = nextPowerOfTwo(fontSize + 24);
+
+  // Redraw after resize (canvas clears on resize)
+  ctx.font = `bold ${fontSize}px monospace`;
+  const colorStr = "#" + currentSilkColor.toString(16).padStart(6, "0");
+  ctx.fillStyle = colorStr;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+
+  const aspect = canvas.width / canvas.height;
+  const labelH = 1.8; // mm in world space
+  const labelW = labelH * aspect;
+
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(labelW, labelH),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+  );
+
+  // Flat on board surface, facing up
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.set(x, 0.06, z);
+  group.add(plane);
 }
+
+// ---------------------------------------------------------------------------
+// Beveled box helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a mesh with rounded vertical edges, sitting on the XZ plane.
+ * Returns a mesh centered in XZ, extending from y=0 to y=h.
+ */
+function makeBeveledBox(
+  w: number, h: number, d: number, bevel: number, material: THREE.Material
+): THREE.Mesh {
+  const shape = createRoundedRectShape(w, d, bevel);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(-w / 2, 0, d / 2);
+  return mesh;
+}
+
+// ---------------------------------------------------------------------------
+// Traces
+// ---------------------------------------------------------------------------
 
 function drawTraces(
   scene: THREE.Scene,
@@ -721,6 +1026,10 @@ function drawTraces(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Utility helpers
+// ---------------------------------------------------------------------------
+
 /**
  * Create a 2D rounded rectangle shape for extrusion.
  * Origin is at bottom-left corner.
@@ -748,11 +1057,6 @@ function createRoundedRectShape(
 
 /**
  * Determine rotation (degrees) so a connector's opening faces off the nearest board edge.
- * The USB-C model is built with its opening facing -Z.
- *   rotation 0   → opening faces -Z (top edge, y=0 in board coords)
- *   rotation 90  → opening faces -X (left edge, x=0)
- *   rotation 180 → opening faces +Z (bottom edge, y=max)
- *   rotation 270 → opening faces +X (right edge, x=max)
  */
 function getEdgeRotation(x: number, y: number, boardW: number, boardH: number): number {
   const distLeft = x;
@@ -776,4 +1080,14 @@ function getLEDColor(value: string): number {
   if (v.includes("yellow") || v.includes("amber")) return LED_YELLOW;
   if (v.includes("white")) return LED_WHITE;
   return LED_RED; // default
+}
+
+function parseCapacitance(value: string): number {
+  const match = value.match(/(\d+\.?\d*)\s*(u|μ)/i);
+  if (match) return parseFloat(match[1]);
+  return 10; // default to 10uF
+}
+
+function nextPowerOfTwo(n: number): number {
+  return Math.pow(2, Math.ceil(Math.log2(Math.max(1, n))));
 }
