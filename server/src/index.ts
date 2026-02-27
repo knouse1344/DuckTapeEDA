@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { authRouter } from "./routes/auth.js";
 import { settingsRouter } from "./routes/settings.js";
 import { chatRouter } from "./routes/chat.js";
+import { designsRouter } from "./routes/designs.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ if (process.env.NODE_ENV !== "production") {
 app.use("/auth", authRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/chat", chatRouter);
+app.use("/api/designs", designsRouter);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === "production") {

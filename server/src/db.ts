@@ -25,6 +25,19 @@ db.exec(`
     iv TEXT NOT NULL,
     updated_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
+
+  CREATE TABLE IF NOT EXISTS designs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    design_json TEXT NOT NULL,
+    chat_json TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_designs_user ON designs(user_id, updated_at DESC);
 `);
 
 // Prepared statements
@@ -50,6 +63,25 @@ const selectApiKey = db.prepare(
 const removeApiKey = db.prepare("DELETE FROM api_keys WHERE user_id = ?");
 const apiKeyExists = db.prepare(
   "SELECT 1 FROM api_keys WHERE user_id = ?"
+);
+
+// Design statements
+const insertDesignStmt = db.prepare(`
+  INSERT INTO designs (user_id, name, description, design_json, chat_json)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const updateDesignStmt = db.prepare(`
+  UPDATE designs SET name = ?, description = ?, design_json = ?, chat_json = ?, updated_at = unixepoch()
+  WHERE id = ? AND user_id = ?
+`);
+const listDesignsStmt = db.prepare(
+  "SELECT id, name, description, created_at, updated_at FROM designs WHERE user_id = ? ORDER BY updated_at DESC LIMIT 50"
+);
+const getDesignStmt = db.prepare(
+  "SELECT * FROM designs WHERE id = ? AND user_id = ?"
+);
+const deleteDesignStmt = db.prepare(
+  "DELETE FROM designs WHERE id = ? AND user_id = ?"
 );
 
 export interface DbUser {
@@ -100,4 +132,61 @@ export function deleteApiKey(userId: number): void {
 
 export function hasApiKey(userId: number): boolean {
   return apiKeyExists.get(userId) !== undefined;
+}
+
+// Design CRUD
+
+export interface DbDesign {
+  id: number;
+  user_id: number;
+  name: string;
+  description: string;
+  design_json: string;
+  chat_json: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface DbDesignSummary {
+  id: number;
+  name: string;
+  description: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export function insertDesign(
+  userId: number,
+  name: string,
+  description: string,
+  designJson: string,
+  chatJson: string
+): number {
+  const result = insertDesignStmt.run(userId, name, description, designJson, chatJson);
+  return result.lastInsertRowid as number;
+}
+
+export function updateDesign(
+  id: number,
+  userId: number,
+  name: string,
+  description: string,
+  designJson: string,
+  chatJson: string
+): boolean {
+  const result = updateDesignStmt.run(name, description, designJson, chatJson, id, userId);
+  return result.changes > 0;
+}
+
+export function listDesigns(userId: number): DbDesignSummary[] {
+  return listDesignsStmt.all(userId) as DbDesignSummary[];
+}
+
+export function getDesign(id: number, userId: number): DbDesign | undefined {
+  return getDesignStmt.get(id, userId) as DbDesign | undefined;
+}
+
+export function deleteDesign(id: number, userId: number): boolean {
+  const result = deleteDesignStmt.run(id, userId);
+  return result.changes > 0;
 }

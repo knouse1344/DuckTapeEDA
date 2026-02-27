@@ -1,9 +1,15 @@
 import { useState, useRef } from "react";
 import type { ChatMessage, CircuitDesign } from "./types/circuit";
 import { sendMessageStreaming } from "./services/claude";
+import {
+  saveDesign,
+  updateDesign,
+  getDesign,
+} from "./services/designs";
 import { useAuth } from "./contexts/AuthContext";
 import ChatPanel from "./components/ChatPanel";
 import DesignViewer from "./components/DesignViewer";
+import DesignsDrawer from "./components/DesignsDrawer";
 import LoginPage from "./components/LoginPage";
 
 export default function App() {
@@ -15,6 +21,11 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [refining, setRefining] = useState(false);
   const streamingTextRef = useRef("");
+
+  // Design saving state
+  const [currentDesignId, setCurrentDesignId] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
 
   // Show loading while checking auth
   if (authLoading) {
@@ -72,10 +83,25 @@ export default function App() {
         content: response.text,
         design: response.design ?? undefined,
       };
-      setMessages([...updatedMessages, assistantMessage]);
+      const finalMessages = [...updatedMessages, assistantMessage];
+      setMessages(finalMessages);
 
       if (response.design) {
         setCurrentDesign(response.design);
+
+        // Auto-save: create or update
+        try {
+          if (currentDesignId) {
+            await updateDesign(token, currentDesignId, response.design, finalMessages);
+          } else {
+            const id = await saveDesign(token, response.design, finalMessages);
+            setCurrentDesignId(id);
+          }
+          setDrawerRefreshKey((k) => k + 1);
+        } catch {
+          // Save failed silently — don't break the chat flow
+          console.error("Auto-save failed");
+        }
       }
     } catch (err) {
       const errorMessage: ChatMessage = {
@@ -87,6 +113,24 @@ export default function App() {
       setStreaming(false);
       setRefining(false);
     }
+  };
+
+  const handleLoadDesign = async (id: number) => {
+    if (!token) return;
+    try {
+      const saved = await getDesign(token, id);
+      setMessages(saved.messages);
+      setCurrentDesign(saved.design);
+      setCurrentDesignId(saved.id);
+    } catch {
+      console.error("Failed to load design");
+    }
+  };
+
+  const handleNewDesign = () => {
+    setMessages([]);
+    setCurrentDesign(null);
+    setCurrentDesignId(null);
   };
 
   return (
@@ -103,6 +147,12 @@ export default function App() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            My Designs
+          </button>
           <span className="text-sm text-gray-600">{user.name}</span>
           <button
             onClick={logout}
@@ -112,6 +162,17 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* Designs drawer */}
+      <DesignsDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onLoad={handleLoadDesign}
+        onNew={handleNewDesign}
+        token={token!}
+        activeDesignId={currentDesignId}
+        refreshKey={drawerRefreshKey}
+      />
 
       {/* Main panels */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
