@@ -1,21 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import type { ChatMessage } from "../types/circuit";
 import { useAuth } from "../contexts/AuthContext";
-import GoogleSignInButton from "./GoogleSignInButton";
 import ApiKeySettings from "./ApiKeySettings";
 
 interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => void;
   loading: boolean;
-  authLoading: boolean;
 }
 
 export default function ChatPanel({
   messages,
   onSend,
   loading,
-  authLoading,
 }: Props) {
   const { user } = useAuth();
   const [input, setInput] = useState("");
@@ -37,22 +34,9 @@ export default function ChatPanel({
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {/* Auth section */}
+      {/* API Key settings */}
       <div className="p-3 border-b border-gray-200">
-        {authLoading ? (
-          <div className="text-sm text-gray-400 text-center py-2">
-            Loading...
-          </div>
-        ) : !user ? (
-          <div className="space-y-2">
-            <p className="text-xs text-gray-500 text-center">
-              Sign in to get started
-            </p>
-            <GoogleSignInButton />
-          </div>
-        ) : (
-          <ApiKeySettings />
-        )}
+        <ApiKeySettings />
       </div>
 
       {/* Messages */}
@@ -63,9 +47,7 @@ export default function ChatPanel({
             <p className="text-sm mt-1">
               {canChat
                 ? "Describe a circuit board and I'll design it for you."
-                : user
-                  ? "Add your Anthropic API key above to start."
-                  : "Sign in with Google to get started."}
+                : "Add your Anthropic API key above to start."}
             </p>
           </div>
         )}
@@ -117,7 +99,7 @@ export default function ChatPanel({
             placeholder={
               canChat
                 ? "Describe your circuit board..."
-                : "Sign in and add your API key first"
+                : "Add your API key above first"
             }
             disabled={!canChat || loading}
             className="flex-1 px-4 py-2.5 text-sm border border-gray-300 rounded-full focus:outline-none focus:border-blue-400 disabled:opacity-50 disabled:bg-gray-50"
