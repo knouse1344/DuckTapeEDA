@@ -203,8 +203,8 @@ router.post("/", requireAuth, async (req, res) => {
           // On retries, enrich feedback with spatial context
           let spatialContext = "";
           if (design) {
-            const spatialMap = generateSpatialMap(design as Record<string, unknown>);
-            const capacityWarning = checkBoardCapacity(design as Record<string, unknown>);
+            const spatialMap = generateSpatialMap(design as Parameters<typeof generateSpatialMap>[0]);
+            const capacityWarning = checkBoardCapacity(design as Parameters<typeof checkBoardCapacity>[0]);
             if (spatialMap) spatialContext += `\n\nSPATIAL MAP (current component positions):\n${spatialMap}`;
             if (capacityWarning) spatialContext += `\n\nBOARD CAPACITY WARNING:\n${capacityWarning}`;
           }
