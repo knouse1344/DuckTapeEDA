@@ -231,40 +231,58 @@ function buildResistor(comp: Component): THREE.Group {
 
     addLabel(group, comp.ref, 0, 1.2);
   } else {
-    // Through-hole resistor: cylinder body with wire leads
+    // Through-hole resistor: cylinder body with bent wire leads
+    const bodyLen = 4;
+    const bodyR = 1;
+    const bodyY = 3;
+    const leadX = 3;
+    const wireR = 0.15;
+    const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
+
     const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(1, 1, 3, 16),
-      new THREE.MeshPhongMaterial({ color: 0xd4b896 }) // tan body
+      new THREE.CylinderGeometry(bodyR, bodyR, bodyLen, 16),
+      new THREE.MeshPhongMaterial({ color: 0xd4b896 })
     );
     body.rotation.z = Math.PI / 2;
-    body.position.y = 3;
+    body.position.y = bodyY;
     group.add(body);
 
-    // Color bands (simplified: just a few rings)
-    const bandColors = [0x964b00, 0xffa500, 0x964b00, 0xffd700]; // brown-orange-brown-gold (330 ohm)
+    // Color bands
+    const bandColors = [0x964b00, 0xffa500, 0x964b00, 0xffd700];
     bandColors.forEach((color, i) => {
       const band = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.05, 1.05, 0.3, 16),
+        new THREE.CylinderGeometry(bodyR + 0.05, bodyR + 0.05, 0.3, 16),
         new THREE.MeshPhongMaterial({ color })
       );
       band.rotation.z = Math.PI / 2;
-      band.position.set(-0.9 + i * 0.6, 3, 0);
+      band.position.set(-1.05 + i * 0.7, bodyY, 0);
       group.add(band);
     });
 
-    // Wire leads
-    const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
-    const wireGeo = new THREE.CylinderGeometry(0.15, 0.15, 3, 8);
-    const wireL = new THREE.Mesh(wireGeo, wireMat);
-    wireL.position.set(-2, 1.5, 0);
-    group.add(wireL);
-    const wireR = new THREE.Mesh(wireGeo, wireMat);
-    wireR.position.set(2, 1.5, 0);
-    group.add(wireR);
+    // Vertical leads (board up to body center)
+    const vertGeo = new THREE.CylinderGeometry(wireR, wireR, bodyY, 8);
+    const vertL = new THREE.Mesh(vertGeo, wireMat);
+    vertL.position.set(-leadX, bodyY / 2, 0);
+    group.add(vertL);
+    const vertR = new THREE.Mesh(vertGeo, wireMat);
+    vertR.position.set(leadX, bodyY / 2, 0);
+    group.add(vertR);
+
+    // Horizontal leads (connect vertical leads to body ends)
+    const horizLen = leadX - bodyLen / 2;
+    const horizGeo = new THREE.CylinderGeometry(wireR, wireR, horizLen, 8);
+    const horizL = new THREE.Mesh(horizGeo, wireMat);
+    horizL.rotation.z = Math.PI / 2;
+    horizL.position.set(-(bodyLen / 2 + horizLen / 2), bodyY, 0);
+    group.add(horizL);
+    const horizR = new THREE.Mesh(horizGeo, wireMat);
+    horizR.rotation.z = Math.PI / 2;
+    horizR.position.set(bodyLen / 2 + horizLen / 2, bodyY, 0);
+    group.add(horizR);
 
     // Pads
-    addPad(group, -2, 0);
-    addPad(group, 2, 0);
+    addPad(group, -leadX, 0);
+    addPad(group, leadX, 0);
 
     addLabel(group, comp.ref, 0, 2.0);
   }
@@ -1175,26 +1193,46 @@ function buildDHT22(comp: Component): THREE.Group {
   housing.position.y = 0.5;
   group.add(housing);
 
-  // Vent/grid pattern — recessed slots cut into the front face
-  // Dark recessed slots (inset into the housing, not protruding)
-  const slotMat = new THREE.MeshPhongMaterial({ color: 0x666660 });
-  for (let i = 0; i < 6; i++) {
-    const slot = new THREE.Mesh(
-      new THREE.BoxGeometry(10, 0.6, 0.5),
-      slotMat
+  // Vent/grid pattern — dark recessed background with raised white ribs
+  const frontZ = -bodyD / 2; // housing front face
+  const ventW = 11;
+  const ventH = 13;
+  const ventCenterY = 11;
+
+  // Dark recessed background (0.02mm proud of housing to avoid z-fighting)
+  const recessMat = new THREE.MeshPhongMaterial({ color: 0x444440 });
+  const recess = new THREE.Mesh(
+    new THREE.BoxGeometry(ventW, ventH, 0.08),
+    recessMat
+  );
+  recess.position.set(0, ventCenterY, frontZ - 0.06);
+  group.add(recess);
+
+  // White raised ribs (sit proud of dark background)
+  const ribMat = new THREE.MeshPhongMaterial({ color: 0xf0f0e8, specular: 0x333333, shininess: 30 });
+  const ribDepth = 0.2;
+  const ribZ = frontZ - 0.22;
+
+  // Horizontal ribs
+  for (let i = 0; i <= 6; i++) {
+    const y = ventCenterY - ventH / 2 + i * (ventH / 6);
+    const hRib = new THREE.Mesh(
+      new THREE.BoxGeometry(ventW, 0.5, ribDepth),
+      ribMat
     );
-    slot.position.set(0, 5 + i * 2.2, -bodyD / 2 + 0.25);
-    group.add(slot);
+    hRib.position.set(0, y, ribZ);
+    group.add(hRib);
   }
 
-  // Vertical dividers in the grid (also recessed)
-  for (let i = 0; i < 3; i++) {
-    const vSlot = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 13, 0.5),
-      slotMat
+  // Vertical ribs
+  for (let i = 0; i <= 4; i++) {
+    const x = -ventW / 2 + i * (ventW / 4);
+    const vRib = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, ventH, ribDepth),
+      ribMat
     );
-    vSlot.position.set(-4 + i * 4, 10.5, -bodyD / 2 + 0.25);
-    group.add(vSlot);
+    vRib.position.set(x, ventCenterY, ribZ);
+    group.add(vRib);
   }
 
   // "DHT22" label on front face
