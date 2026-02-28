@@ -26,6 +26,33 @@ const ELECTROLYTIC_BODY = 0x1a2a3a;
 const ELECTROLYTIC_STRIPE = 0xdddddd;
 const ELECTROLYTIC_TOP = 0x555566;
 
+// ==========================================================================
+// 3D Model Coordinate Conventions
+// ==========================================================================
+//
+// COORDINATE SYSTEM:
+//   Y = 0  → board surface (top of PCB)
+//   Y > 0  → above the board (components grow upward)
+//   Y < 0  → below the board (through-hole pins, solder joints)
+//   X, Z   → board plane (component local coordinates)
+//
+// BUILDER CONTRACT:
+//   Each build*() returns a THREE.Group with origin at the board surface,
+//   centered on the component footprint.
+//
+// makeBeveledBox(w, h, d, bevel, material):
+//   Creates geometry from Y=0 to Y=h, centered in X and Z.
+//   When stacking parts on top:
+//     nextBeveledBox.position.y = currentBox.position.y + currentBoxH
+//
+// BoxGeometry (center-anchored) on top of a makeBeveledBox:
+//   Flush with top:  box.position.y = surfaceY + beveledBoxH - boxH/2
+//   Sitting on top:  box.position.y = surfaceY + beveledBoxH + boxH/2
+//
+// DIMENSIONS: All measurements in millimeters (mm).
+//   Reference real datasheet dimensions where possible.
+// ==========================================================================
+
 // Module-level silkscreen color (set per buildScene call, used by addLabel)
 let currentSilkColor = SILKSCREEN;
 
@@ -126,28 +153,32 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
 function buildComponent(comp: Component): THREE.Group {
   // Check for specific named components first (value-based dispatch)
   const val = comp.value?.toLowerCase() || "";
-  if (val.includes("arduino nano")) return buildArduinoNano(comp);
-  if (val.includes("raspberry pi pico")) return buildPiPico(comp);
-  if (val.includes("ssd1306")) return buildOLEDModule(comp);
-  if (val.includes("lcd 1602")) return buildLCDModule(comp);
-  if (val.includes("dht22")) return buildDHT22(comp);
-  if (val.includes("ws2812")) return buildWS2812B(comp);
-  if (val.includes("piezo buzzer") || val.includes("passive buzzer")) return buildBuzzer(comp);
+  let group: THREE.Group;
 
-  switch (comp.type) {
-    case "resistor":
-      return buildResistor(comp);
-    case "led":
-      return buildLED(comp);
-    case "connector":
-      return buildConnector(comp);
-    case "capacitor":
-      return buildCapacitor(comp);
-    case "diode":
-      return buildDiode(comp);
-    default:
-      return buildGenericIC(comp);
+  if (val.includes("arduino nano")) group = buildArduinoNano(comp);
+  else if (val.includes("raspberry pi pico")) group = buildPiPico(comp);
+  else if (val.includes("ssd1306")) group = buildOLEDModule(comp);
+  else if (val.includes("lcd 1602")) group = buildLCDModule(comp);
+  else if (val.includes("dht22")) group = buildDHT22(comp);
+  else if (val.includes("ws2812")) group = buildWS2812B(comp);
+  else if (val.includes("piezo buzzer") || val.includes("passive buzzer")) group = buildBuzzer(comp);
+  else {
+    switch (comp.type) {
+      case "resistor": group = buildResistor(comp); break;
+      case "led": group = buildLED(comp); break;
+      case "connector": group = buildConnector(comp); break;
+      case "capacitor": group = buildCapacitor(comp); break;
+      case "diode": group = buildDiode(comp); break;
+      default: group = buildGenericIC(comp); break;
+    }
   }
+
+  // Dev-only: validate model positioning to catch floating parts
+  if (import.meta.env.DEV) {
+    validateComponentGroup(group, comp.ref || comp.value || "unknown");
+  }
+
+  return group;
 }
 
 // ---------------------------------------------------------------------------
@@ -724,6 +755,8 @@ function buildWS2812B(comp: Component): THREE.Group {
 // ---------------------------------------------------------------------------
 
 function buildArduinoNano(comp: Component): THREE.Group {
+  // Real dimensions: 18.0 x 45.0 x 1.6mm PCB (Arduino Nano V3.0)
+  // Key features: Mini-USB, ATmega328P TQFP-32, CH340G, 2x15 pin headers, ICSP
   const group = new THREE.Group();
   const pcbW = 18;
   const pcbD = 45;
@@ -734,13 +767,13 @@ function buildArduinoNano(comp: Component): THREE.Group {
   const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
   group.add(pcb);
 
-  // ATmega328P chip (black rectangle in center)
+  // ATmega328P chip (black TQFP-32 in center of board)
   const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
   const chip = makeBeveledBox(7, 1.0, 7, 0.1, chipMat);
   chip.position.y = pcbH;
   group.add(chip);
 
-  // Pin 1 dot on chip
+  // Pin 1 dot on ATmega
   const dot = new THREE.Mesh(
     new THREE.CircleGeometry(0.3, 12),
     new THREE.MeshBasicMaterial({ color: 0xcccccc })
@@ -748,6 +781,9 @@ function buildArduinoNano(comp: Component): THREE.Group {
   dot.rotation.x = -Math.PI / 2;
   dot.position.set(-2.5, pcbH + 1.01, -2.5);
   group.add(dot);
+
+  // CH340G USB-serial chip (near USB port)
+  addSMDChip(group, 5, 5, 0.8, 0, -pcbD / 2 + 9, pcbH);
 
   // Mini-USB port at one end (silver box)
   const usbMat = new THREE.MeshPhongMaterial({ color: USB_METAL, specular: 0xcccccc, shininess: 100 });
@@ -779,32 +815,25 @@ function buildArduinoNano(comp: Component): THREE.Group {
   resetBtn.position.set(5, pcbH + 0.6, -8);
   group.add(resetBtn);
 
-  // Two rows of gold pin headers along edges
-  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
-  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  // Two rows of 15 pin headers along edges
   const pitch = 2.54;
   const pinsPerSide = 15;
-  const startZ = -pcbD / 2 + 3;
-
+  const headerCenterZ = -pcbD / 2 + 3 + (pinsPerSide - 1) * pitch / 2;
   for (const side of [-1, 1]) {
-    // Black plastic header strip
-    const headerStrip = new THREE.Mesh(
-      new THREE.BoxGeometry(2.5, 2.5, pinsPerSide * pitch),
-      headerMat
-    );
-    headerStrip.position.set(side * (pcbW / 2 - 1.5), pcbH + 1.25, startZ + (pinsPerSide - 1) * pitch / 2);
-    group.add(headerStrip);
+    addPinHeaderRow(group, pinsPerSide, pitch, side * (pcbW / 2 - 1.5), headerCenterZ, "z", pcbH);
+  }
 
-    for (let i = 0; i < pinsPerSide; i++) {
-      const pinZ = startZ + i * pitch;
-      // Gold pin extending up through header
-      const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
-      pin.position.set(side * (pcbW / 2 - 1.5), pcbH + 0.25, pinZ);
-      group.add(pin);
+  // ICSP 2x3 header pads (6 gold dots near center)
+  const icspMat = new THREE.MeshPhongMaterial({ color: HASL_COLOR, specular: HASL_SPECULAR, shininess: 80 });
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 8), icspMat);
+      pad.position.set(-1.27 + row * 2.54, pcbH + 0.02, 10 + col * 2.54);
+      group.add(pad);
     }
   }
 
-  // Power LED (green, tiny)
+  // Power LED (green, tiny SMD)
   const pwrLed = new THREE.Mesh(
     new THREE.BoxGeometry(1.0, 0.5, 0.6),
     new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 })
@@ -812,11 +841,34 @@ function buildArduinoNano(comp: Component): THREE.Group {
   pwrLed.position.set(4, pcbH + 0.25, 12);
   group.add(pwrLed);
 
+  // TX LED (green) and RX LED (orange) near the USB-serial chip
+  const txLed = new THREE.Mesh(
+    new THREE.BoxGeometry(0.8, 0.4, 0.5),
+    new THREE.MeshPhongMaterial({ color: 0x00cc44, emissive: 0x00cc44, emissiveIntensity: 0.2, transparent: true, opacity: 0.85 })
+  );
+  txLed.position.set(-4, pcbH + 0.2, -pcbD / 2 + 12);
+  group.add(txLed);
+
+  const rxLed = new THREE.Mesh(
+    new THREE.BoxGeometry(0.8, 0.4, 0.5),
+    new THREE.MeshPhongMaterial({ color: 0xff8800, emissive: 0xff8800, emissiveIntensity: 0.2, transparent: true, opacity: 0.85 })
+  );
+  rxLed.position.set(-4, pcbH + 0.2, -pcbD / 2 + 14);
+  group.add(rxLed);
+
+  // Silkscreen "NANO" text on PCB
+  addLabel(group, "NANO", 0, 0);
+
+  // SMD passives scattered on board
+  addSMDPassives(group, 4, pcbH, 3, -5, 6, 8);
+
   addLabel(group, comp.ref, 0, pcbD / 2 + 2);
   return group;
 }
 
 function buildPiPico(comp: Component): THREE.Group {
+  // Real dimensions: 21.0 x 51.0 x 1.0mm PCB (Raspberry Pi Pico)
+  // Key features: USB-C (Micro-USB on original), RP2040 QFN-56, W25Q16 flash, BOOTSEL, 2x20 headers, 3 SWD pads
   const group = new THREE.Group();
   const pcbW = 21;
   const pcbD = 51;
@@ -827,20 +879,8 @@ function buildPiPico(comp: Component): THREE.Group {
   const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
   group.add(pcb);
 
-  // RP2040 chip (black square, center of board)
-  const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
-  const chip = makeBeveledBox(7, 1.0, 7, 0.1, chipMat);
-  chip.position.y = pcbH;
-  group.add(chip);
-
-  // Pin 1 dot on chip
-  const dot = new THREE.Mesh(
-    new THREE.CircleGeometry(0.3, 12),
-    new THREE.MeshBasicMaterial({ color: 0xcccccc })
-  );
-  dot.rotation.x = -Math.PI / 2;
-  dot.position.set(-2.5, pcbH + 1.01, -2.5);
-  group.add(dot);
+  // RP2040 chip (black QFN-56 square, center of board)
+  addSMDChip(group, 7, 7, 1.0, 0, 0, pcbH);
 
   // USB-C port at one end
   const usbMat = new THREE.MeshPhongMaterial({ color: USB_METAL, specular: 0xcccccc, shininess: 100 });
@@ -855,12 +895,10 @@ function buildPiPico(comp: Component): THREE.Group {
   usbOpen.position.set(0, pcbH + 1.6, -pcbD / 2 + 0.01);
   group.add(usbOpen);
 
-  // Flash memory chip (small black rectangle)
-  const flash = makeBeveledBox(4, 0.8, 3, 0.08, chipMat);
-  flash.position.set(5, pcbH, 8);
-  group.add(flash);
+  // W25Q16 flash memory chip (small black rectangle)
+  addSMDChip(group, 4, 3, 0.8, 5, 8, pcbH, false);
 
-  // BOOTSEL button
+  // BOOTSEL button (white tactile switch)
   const bootBtn = new THREE.Mesh(
     new THREE.CylinderGeometry(1.2, 1.2, 0.8, 12),
     new THREE.MeshPhongMaterial({ color: 0xf0f0e8, shininess: 40 })
@@ -868,27 +906,20 @@ function buildPiPico(comp: Component): THREE.Group {
   bootBtn.position.set(-5, pcbH + 0.4, -10);
   group.add(bootBtn);
 
-  // Two rows of gold pin headers along edges
-  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
-  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  // Two rows of 20 pin headers along edges
   const pitch = 2.54;
   const pinsPerSide = 20;
-  const startZ = -pcbD / 2 + 3;
-
+  const headerCenterZ = -pcbD / 2 + 3 + (pinsPerSide - 1) * pitch / 2;
   for (const side of [-1, 1]) {
-    const headerStrip = new THREE.Mesh(
-      new THREE.BoxGeometry(2.5, 2.5, pinsPerSide * pitch),
-      headerMat
-    );
-    headerStrip.position.set(side * (pcbW / 2 - 1.5), pcbH + 1.25, startZ + (pinsPerSide - 1) * pitch / 2);
-    group.add(headerStrip);
+    addPinHeaderRow(group, pinsPerSide, pitch, side * (pcbW / 2 - 1.5), headerCenterZ, "z", pcbH);
+  }
 
-    for (let i = 0; i < pinsPerSide; i++) {
-      const pinZ = startZ + i * pitch;
-      const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
-      pin.position.set(side * (pcbW / 2 - 1.5), pcbH + 0.25, pinZ);
-      group.add(pin);
-    }
+  // 3 SWD debug pads at bottom of board
+  const swdMat = new THREE.MeshPhongMaterial({ color: HASL_COLOR, specular: HASL_SPECULAR, shininess: 80 });
+  for (let i = 0; i < 3; i++) {
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 8), swdMat);
+    pad.position.set(-2.54 + i * 2.54, pcbH + 0.02, pcbD / 2 - 3);
+    group.add(pad);
   }
 
   // On-board LED (green)
@@ -899,15 +930,24 @@ function buildPiPico(comp: Component): THREE.Group {
   led.position.set(3, pcbH + 0.25, 14);
   group.add(led);
 
+  // Silkscreen "Pico" label
+  addLabel(group, "Pico", 0, -5);
+
+  // SMD passives scattered on board
+  addSMDPassives(group, 5, pcbH, -3, 5, 8, 10);
+
   addLabel(group, comp.ref, 0, pcbD / 2 + 2);
   return group;
 }
 
 function buildOLEDModule(comp: Component): THREE.Group {
+  // Real dimensions: ~27 x 27mm PCB, 0.96" display (SSD1306 I2C module)
+  // Key features: dark PCB, black bezel with OLED screen, FPC ribbon, 4 mounting holes, 4-pin header
   const group = new THREE.Group();
   const pcbW = 27;
   const pcbD = 27;
   const pcbH = 1.2;
+  const bezelH = 1.8;
 
   // Dark blue/black PCB
   const pcbMat = new THREE.MeshPhongMaterial({ color: 0x0a1a3a, specular: 0x111133, shininess: 25 });
@@ -916,11 +956,12 @@ function buildOLEDModule(comp: Component): THREE.Group {
 
   // Display bezel (black frame around the screen)
   const bezelMat = new THREE.MeshPhongMaterial({ color: 0x0a0a0a, specular: 0x111111, shininess: 15 });
-  const bezel = makeBeveledBox(25, 1.8, 16, 0.2, bezelMat);
+  const bezel = makeBeveledBox(25, bezelH, 16, 0.2, bezelMat);
   bezel.position.set(0, pcbH, -2);
   group.add(bezel);
 
-  // Active screen area (very dark with slight blue tint — looks like an OLED off-state)
+  // Active screen area — flush with bezel top (pcbH + bezelH - screenH/2)
+  const screenH = 0.3;
   const screenMat = new THREE.MeshPhongMaterial({
     color: 0x020208,
     emissive: 0x000811,
@@ -929,50 +970,54 @@ function buildOLEDModule(comp: Component): THREE.Group {
     shininess: 120,
   });
   const screen = new THREE.Mesh(
-    new THREE.BoxGeometry(22, 0.3, 11),
+    new THREE.BoxGeometry(22, screenH, 11),
     screenMat
   );
-  screen.position.set(0, pcbH + 1.95, -2);
+  screen.position.set(0, pcbH + bezelH - screenH / 2, -2);
   group.add(screen);
 
-  // Subtle screen reflection highlight
+  // Subtle screen reflection highlight — just above screen surface
   const glare = new THREE.Mesh(
     new THREE.PlaneGeometry(18, 4),
     new THREE.MeshBasicMaterial({ color: 0x111133, transparent: true, opacity: 0.15 })
   );
   glare.rotation.x = -Math.PI / 2;
-  glare.position.set(-2, pcbH + 2.12, -3);
+  glare.position.set(-2, pcbH + bezelH + 0.01, -3);
   group.add(glare);
 
+  // FPC ribbon cable connecting PCB to display glass (tan strip on back edge)
+  const fpcMat = new THREE.MeshPhongMaterial({ color: 0xc4a35a, specular: 0x665533, shininess: 20 });
+  const fpc = new THREE.Mesh(new THREE.BoxGeometry(20, 0.2, 2), fpcMat);
+  fpc.position.set(0, pcbH + 0.6, -pcbD / 2 + 6);
+  group.add(fpc);
+
+  // 4 mounting holes at PCB corners
+  const holeInset = 1.5;
+  addMountingHoles(group, [
+    { x: -pcbW / 2 + holeInset, z: -pcbD / 2 + holeInset },
+    { x: pcbW / 2 - holeInset, z: -pcbD / 2 + holeInset },
+    { x: -pcbW / 2 + holeInset, z: pcbD / 2 - holeInset },
+    { x: pcbW / 2 - holeInset, z: pcbD / 2 - holeInset },
+  ], 2.0);
+
+  // SMD passives near pin header area
+  addSMDPassives(group, 3, pcbH, 0, pcbD / 2 - 5, 10, 3);
+
   // 4-pin header along one edge
-  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
-  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
-  const pitch = 2.54;
-
-  const headerStrip = new THREE.Mesh(
-    new THREE.BoxGeometry(4 * pitch, 2.5, 2.5),
-    headerMat
-  );
-  headerStrip.position.set(0, pcbH + 1.25, pcbD / 2 - 1.5);
-  group.add(headerStrip);
-
-  for (let i = 0; i < 4; i++) {
-    const pinX = -((3) * pitch) / 2 + i * pitch;
-    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
-    pin.position.set(pinX, pcbH + 0.25, pcbD / 2 - 1.5);
-    group.add(pin);
-    addPad(group, pinX, pcbD / 2 - 1.5);
-  }
+  addPinHeaderRow(group, 4, 2.54, 0, pcbD / 2 - 1.5, "x", pcbH);
 
   addLabel(group, comp.ref, 0, pcbD / 2 + 2);
   return group;
 }
 
 function buildLCDModule(comp: Component): THREE.Group {
+  // Real dimensions: ~36 x 80mm PCB, 16x2 character LCD with I2C backpack
+  // Key features: green PCB, metal frame, dark green display, I2C backpack with PCF8574
   const group = new THREE.Group();
   const pcbW = 36;
   const pcbD = 80;
   const pcbH = 1.6;
+  const frameH = 4.5;
 
   // Green PCB
   const pcbMat = new THREE.MeshPhongMaterial({ color: 0x1a6b2a, specular: 0x224422, shininess: 25 });
@@ -981,11 +1026,12 @@ function buildLCDModule(comp: Component): THREE.Group {
 
   // LCD metal frame/bezel
   const frameMat = new THREE.MeshPhongMaterial({ color: 0x888888, specular: 0xaaaaaa, shininess: 60 });
-  const frame = makeBeveledBox(33, 4.5, 60, 0.3, frameMat);
+  const frame = makeBeveledBox(33, frameH, 60, 0.3, frameMat);
   frame.position.set(0, pcbH, -5);
   group.add(frame);
 
-  // Display window (dark green/black LCD area)
+  // Display window — flush with frame top (pcbH + frameH - displayH/2)
+  const displayH = 0.3;
   const displayMat = new THREE.MeshPhongMaterial({
     color: 0x0a2a0a,
     emissive: 0x001a00,
@@ -994,33 +1040,47 @@ function buildLCDModule(comp: Component): THREE.Group {
     shininess: 80,
   });
   const display = new THREE.Mesh(
-    new THREE.BoxGeometry(28, 0.3, 14),
+    new THREE.BoxGeometry(28, displayH, 14),
     displayMat
   );
-  display.position.set(0, pcbH + 4.65, -5);
+  display.position.set(0, pcbH + frameH - displayH / 2, -5);
   group.add(display);
 
-  // I2C backpack (small blue PCB on the back, but visible as 4 pins)
-  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
-  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
-  const pitch = 2.54;
-
-  const headerStrip = new THREE.Mesh(
-    new THREE.BoxGeometry(4 * pitch, 2.5, 2.5),
-    headerMat
-  );
-  headerStrip.position.set(0, pcbH + 1.25, pcbD / 2 - 2);
-  group.add(headerStrip);
-
-  for (let i = 0; i < 4; i++) {
-    const pinX = -((3) * pitch) / 2 + i * pitch;
-    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
-    pin.position.set(pinX, pcbH + 0.25, pcbD / 2 - 2);
-    group.add(pin);
-    addPad(group, pinX, pcbD / 2 - 2);
+  // Faint 16x2 character grid on the display surface
+  const gridMat = new THREE.MeshBasicMaterial({ color: 0x0f3f0f, transparent: true, opacity: 0.4 });
+  const charW = 1.5;
+  const charD = 2.8;
+  const gridStartX = -12.5;
+  const gridStartZ = -5 - 3.5;
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 16; col++) {
+      const cell = new THREE.Mesh(new THREE.PlaneGeometry(charW, charD), gridMat);
+      cell.rotation.x = -Math.PI / 2;
+      cell.position.set(
+        gridStartX + col * 1.7,
+        pcbH + frameH + 0.01,
+        gridStartZ + row * 3.5
+      );
+      group.add(cell);
+    }
   }
 
-  // Contrast potentiometer (small blue square on the backpack area)
+  // 4 mounting holes at PCB corners
+  const holeInset = 2;
+  addMountingHoles(group, [
+    { x: -pcbW / 2 + holeInset, z: -pcbD / 2 + holeInset },
+    { x: pcbW / 2 - holeInset, z: -pcbD / 2 + holeInset },
+    { x: -pcbW / 2 + holeInset, z: pcbD / 2 - holeInset },
+    { x: pcbW / 2 - holeInset, z: pcbD / 2 - holeInset },
+  ], 3.0);
+
+  // I2C backpack: 4-pin header along one edge
+  addPinHeaderRow(group, 4, 2.54, 0, pcbD / 2 - 2, "x", pcbH);
+
+  // PCF8574 I2C expander chip on the backpack area
+  addSMDChip(group, 5, 4, 0.8, -6, pcbD / 2 - 6, pcbH);
+
+  // Contrast potentiometer (small blue square)
   const pot = new THREE.Mesh(
     new THREE.BoxGeometry(3, 2, 3),
     new THREE.MeshPhongMaterial({ color: 0x2244aa })
@@ -1048,28 +1108,32 @@ function buildDHT22(comp: Component): THREE.Group {
   housing.position.y = 0.5;
   group.add(housing);
 
-  // Vent/grid pattern on front face (series of horizontal dark slots)
-  const slotMat = new THREE.MeshPhongMaterial({ color: 0xb0b0a0 });
+  // Vent/grid pattern — recessed slots cut into the front face
+  // Dark recessed slots (inset into the housing, not protruding)
+  const slotMat = new THREE.MeshPhongMaterial({ color: 0x666660 });
   for (let i = 0; i < 6; i++) {
     const slot = new THREE.Mesh(
-      new THREE.BoxGeometry(10, 0.8, 0.3),
+      new THREE.BoxGeometry(10, 0.6, 0.5),
       slotMat
     );
-    slot.position.set(0, 5 + i * 2.4, -bodyD / 2 - 0.1);
+    slot.position.set(0, 5 + i * 2.2, -bodyD / 2 + 0.25);
     group.add(slot);
   }
 
-  // Vertical dividers in the grid
+  // Vertical dividers in the grid (also recessed)
   for (let i = 0; i < 3; i++) {
     const vSlot = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 14, 0.3),
+      new THREE.BoxGeometry(0.3, 13, 0.5),
       slotMat
     );
-    vSlot.position.set(-4 + i * 4, 11, -bodyD / 2 - 0.1);
+    vSlot.position.set(-4 + i * 4, 10.5, -bodyD / 2 + 0.25);
     group.add(vSlot);
   }
 
-  // 4 wire leads (SIP package)
+  // "DHT22" label on front face
+  addLabel(group, "DHT22", 0, -bodyD / 2 - 0.5);
+
+  // 4 wire leads (SIP package) — through-hole extending below board
   const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
   const wireGeo = new THREE.CylinderGeometry(0.2, 0.2, 4, 8);
   const pinSpacing = 2.54;
@@ -1086,25 +1150,27 @@ function buildDHT22(comp: Component): THREE.Group {
 }
 
 function buildBuzzer(comp: Component): THREE.Group {
+  // Real dimensions: ~12mm diameter, ~9.5mm height (typical piezo buzzer)
+  // Key features: black cylinder, tone hole, concentric rings, 2 leads at 7.62mm spacing
   const group = new THREE.Group();
   const radius = 6;
   const height = 4;
 
-  // Black cylindrical body
+  // Black cylindrical body with slight dome on top (larger radius at top)
   const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 25 });
   const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, height, 24),
+    new THREE.CylinderGeometry(radius, radius - 0.2, height, 24),
     bodyMat
   );
   body.position.y = height / 2 + 0.5;
   group.add(body);
 
-  // Top face (slightly different color)
+  // Domed top cap (slight hemisphere effect)
   const topFace = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius - 0.1, radius - 0.1, 0.2, 24),
+    new THREE.SphereGeometry(radius, 24, 8, 0, Math.PI * 2, 0, Math.PI / 6),
     new THREE.MeshPhongMaterial({ color: 0x222222, specular: 0x333333, shininess: 15 })
   );
-  topFace.position.y = height + 0.5;
+  topFace.position.y = height + 0.4;
   group.add(topFace);
 
   // Tone hole in center of top
@@ -1128,8 +1194,8 @@ function buildBuzzer(comp: Component): THREE.Group {
     group.add(ring);
   }
 
-  // Polarity marker (+ symbol on top)
-  const plusMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+  // Polarity marker (+ symbol on top, brighter for visibility)
+  const plusMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
   const plusH = new THREE.Mesh(new THREE.BoxGeometry(2, 0.05, 0.3), plusMat);
   plusH.position.set(-3, height + 0.65, 0);
   group.add(plusH);
@@ -1137,24 +1203,26 @@ function buildBuzzer(comp: Component): THREE.Group {
   plusV.position.set(-3, height + 0.65, 0);
   group.add(plusV);
 
-  // Wire leads
+  // Wire leads — realistic 7.62mm (0.3") spacing for 12mm buzzer
+  const wireSpacing = 3.81;
   const wireMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER });
   const wireGeo = new THREE.CylinderGeometry(0.15, 0.15, 3, 8);
   const wireL = new THREE.Mesh(wireGeo, wireMat);
-  wireL.position.set(-2, -1, 0);
+  wireL.position.set(-wireSpacing, -1, 0);
   group.add(wireL);
   const wireR = new THREE.Mesh(wireGeo, wireMat);
-  wireR.position.set(2, -1, 0);
+  wireR.position.set(wireSpacing, -1, 0);
   group.add(wireR);
 
-  addPad(group, -2, 0);
-  addPad(group, 2, 0);
+  addPad(group, -wireSpacing, 0);
+  addPad(group, wireSpacing, 0);
 
   addLabel(group, comp.ref, 0, radius + 2);
   return group;
 }
 
 function buildGenericModule(comp: Component): THREE.Group {
+  // Generic breakout board fallback — sizes to pin count, navy blue PCB
   const group = new THREE.Group();
   const pinCount = comp.pins?.length || 4;
 
@@ -1169,55 +1237,24 @@ function buildGenericModule(comp: Component): THREE.Group {
   const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.2, pcbMat);
   group.add(pcb);
 
-  // IC/chip on top (black rectangle)
+  // IC/chip on top
   const chipW = Math.min(pcbW - 4, 8);
   const chipD = Math.min(pcbD - 6, 8);
-  const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
-  const chip = makeBeveledBox(chipW, 0.8, chipD, 0.08, chipMat);
-  chip.position.y = pcbH;
-  group.add(chip);
-
-  // Pin 1 dot
-  const dot = new THREE.Mesh(
-    new THREE.CircleGeometry(0.25, 12),
-    new THREE.MeshBasicMaterial({ color: 0xcccccc })
-  );
-  dot.rotation.x = -Math.PI / 2;
-  dot.position.set(-chipW / 2 + 0.6, pcbH + 0.81, -chipD / 2 + 0.6);
-  group.add(dot);
+  addSMDChip(group, chipW, chipD, 0.8, 0, 0, pcbH);
 
   // Pin header row along one edge
-  const pinMat = new THREE.MeshPhongMaterial({ color: 0xdaa520, specular: 0xffdd44, shininess: 100 });
-  const headerMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
+  addPinHeaderRow(group, Math.min(pinCount, Math.floor((pcbW - 1) / pitch)), pitch, 0, pcbD / 2 - 1.5, "x", pcbH);
 
-  // Single row of pins
-  const headerLen = (pinCount - 1) * pitch + 2;
-  const headerStrip = new THREE.Mesh(
-    new THREE.BoxGeometry(headerLen, 2.5, 2.5),
-    headerMat
+  // Power LED indicator (tiny green SMD)
+  const pwrLed = new THREE.Mesh(
+    new THREE.BoxGeometry(0.8, 0.4, 0.5),
+    new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 })
   );
-  headerStrip.position.set(0, pcbH + 1.25, pcbD / 2 - 1.5);
-  group.add(headerStrip);
+  pwrLed.position.set(pcbW / 2 - 2, pcbH + 0.2, -pcbD / 2 + 2);
+  group.add(pwrLed);
 
-  for (let i = 0; i < pinCount; i++) {
-    const pinX = -((pinCount - 1) * pitch) / 2 + i * pitch;
-    if (Math.abs(pinX) > pcbW / 2 - 0.5) continue; // skip if off-board
-    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.5, 0.5), pinMat);
-    pin.position.set(pinX, pcbH + 0.25, pcbD / 2 - 1.5);
-    group.add(pin);
-    addPad(group, pinX, pcbD / 2 - 1.5);
-  }
-
-  // A few passive components (tiny rectangles for decoupling caps etc.)
-  const passiveMat = new THREE.MeshPhongMaterial({ color: 0x3b2a1a });
-  for (let i = 0; i < Math.min(3, Math.floor(pinCount / 3)); i++) {
-    const passive = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 0.4, 0.8),
-      passiveMat
-    );
-    passive.position.set(-pcbW / 2 + 3 + i * 3, pcbH + 0.2, -pcbD / 2 + 3);
-    group.add(passive);
-  }
+  // SMD passives for visual richness
+  addSMDPassives(group, Math.min(3, Math.floor(pinCount / 3)), pcbH, -pcbW / 2 + 4, -pcbD / 2 + 3, 6, 3);
 
   addLabel(group, comp.ref, 0, pcbD / 2 + 2);
   return group;
@@ -1457,6 +1494,186 @@ function addLabel(group: THREE.Group, text: string, x: number, z: number) {
   plane.rotation.x = -Math.PI / 2;
   plane.position.set(x, 0.06, z);
   group.add(plane);
+}
+
+// ---------------------------------------------------------------------------
+// Shared component sub-part helpers
+// ---------------------------------------------------------------------------
+
+const HEADER_BLACK = 0x1a1a1a;
+const PIN_GOLD = 0xdaa520;
+const PIN_GOLD_SPECULAR = 0xffdd44;
+
+/**
+ * Add a row of through-hole pin headers to a group.
+ * Creates a black plastic housing strip with gold pins extending through it.
+ * @param axis - 'x' or 'z': direction the pin row extends along
+ */
+function addPinHeaderRow(
+  group: THREE.Group,
+  pinCount: number,
+  pitch: number,
+  x: number,
+  z: number,
+  axis: "x" | "z",
+  boardTopY: number,
+  pinHeight: number = 5.5
+): void {
+  const headerMat = new THREE.MeshPhongMaterial({ color: HEADER_BLACK });
+  const pinMat = new THREE.MeshPhongMaterial({ color: PIN_GOLD, specular: PIN_GOLD_SPECULAR, shininess: 100 });
+
+  const stripLen = pinCount * pitch;
+  const stripW = 2.5;
+  const stripH = 2.5;
+
+  const housing = new THREE.Mesh(
+    axis === "z"
+      ? new THREE.BoxGeometry(stripW, stripH, stripLen)
+      : new THREE.BoxGeometry(stripLen, stripH, stripW),
+    headerMat
+  );
+  housing.position.set(x, boardTopY + stripH / 2, z);
+  group.add(housing);
+
+  for (let i = 0; i < pinCount; i++) {
+    const offset = -((pinCount - 1) * pitch) / 2 + i * pitch;
+    const px = axis === "z" ? x : x + offset;
+    const pz = axis === "z" ? z + offset : z;
+    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.5, pinHeight, 0.5), pinMat);
+    pin.position.set(px, boardTopY + 0.25, pz);
+    group.add(pin);
+    addPad(group, px, pz);
+  }
+}
+
+/**
+ * Add mounting holes at specified positions (dark cylinders through the PCB).
+ */
+function addMountingHoles(
+  group: THREE.Group,
+  positions: Array<{ x: number; z: number }>,
+  diameter: number = 2.5
+): void {
+  const holeMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+  const r = diameter / 2;
+  for (const pos of positions) {
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 2, 16), holeMat);
+    hole.position.set(pos.x, 0, pos.z);
+    group.add(hole);
+  }
+}
+
+/**
+ * Scatter small SMD passive components (resistors/caps) in an area for visual realism.
+ */
+function addSMDPassives(
+  group: THREE.Group,
+  count: number,
+  boardTopY: number,
+  areaX: number,
+  areaZ: number,
+  areaW: number,
+  areaD: number
+): void {
+  const colors = [0x3b2a1a, 0x2a2a3b, 0x3b3b2a]; // browns and dark tones
+  for (let i = 0; i < count; i++) {
+    const color = colors[i % colors.length];
+    const mat = new THREE.MeshPhongMaterial({ color });
+    const w = 0.8 + Math.random() * 0.6;
+    const d = 0.4 + Math.random() * 0.3;
+    const h = 0.3 + Math.random() * 0.2;
+    const passive = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    // Distribute evenly across the area with slight randomness
+    const t = count > 1 ? i / (count - 1) : 0.5;
+    const px = areaX - areaW / 2 + t * areaW + (Math.random() - 0.5) * 1.5;
+    const pz = areaZ - areaD / 2 + (Math.random()) * areaD;
+    passive.position.set(px, boardTopY + h / 2, pz);
+    group.add(passive);
+
+    // End caps (silver solder terminals)
+    const capMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 60 });
+    for (const side of [-1, 1]) {
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.15, h, d), capMat);
+      cap.position.set(px + side * (w / 2), boardTopY + h / 2, pz);
+      group.add(cap);
+    }
+  }
+}
+
+/**
+ * Add a black IC chip package with optional pin-1 dot.
+ */
+function addSMDChip(
+  group: THREE.Group,
+  w: number,
+  d: number,
+  h: number,
+  x: number,
+  z: number,
+  boardTopY: number,
+  pin1Dot: boolean = true
+): void {
+  const chipMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 30 });
+  const chip = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), chipMat);
+  chip.position.set(x, boardTopY + h / 2, z);
+  group.add(chip);
+
+  if (pin1Dot) {
+    const dotMat = new THREE.MeshPhongMaterial({ color: 0x888888 });
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8), dotMat);
+    dot.position.set(x - w / 2 + 0.8, boardTopY + h + 0.02, z - d / 2 + 0.8);
+    group.add(dot);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dev-only model validation
+// ---------------------------------------------------------------------------
+
+/**
+ * DEV ONLY: Validates that all meshes in a group are properly positioned.
+ * Detects floating parts (gaps > threshold between stacked meshes).
+ * Console-warns during development; tree-shaken in production builds.
+ */
+function validateComponentGroup(
+  group: THREE.Group,
+  componentName: string,
+  boardSurfaceY: number = 0
+): void {
+  const warnings: string[] = [];
+  const children = group.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+
+  for (const child of children) {
+    child.geometry.computeBoundingBox();
+    const bb = child.geometry.boundingBox;
+    if (!bb) continue;
+
+    // Transform bounding box to world-space Y
+    const minY = bb.min.y + child.position.y;
+    const maxY = bb.max.y + child.position.y;
+
+    // Check for meshes floating far above the board with nothing supporting them
+    if (minY > boardSurfaceY + 8) {
+      // Check if any other mesh occupies the gap below
+      const hasSupport = children.some((other) => {
+        if (other === child) return false;
+        other.geometry.computeBoundingBox();
+        const obb = other.geometry.boundingBox;
+        if (!obb) return false;
+        const otherMaxY = obb.max.y + other.position.y;
+        return otherMaxY >= minY - 0.5; // within 0.5mm = supported
+      });
+      if (!hasSupport) {
+        warnings.push(
+          `"${componentName}": mesh at Y=${minY.toFixed(1)}-${maxY.toFixed(1)} may be floating (no support below)`
+        );
+      }
+    }
+  }
+
+  for (const w of warnings) {
+    console.warn(`[3D Model Validation] ${w}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
