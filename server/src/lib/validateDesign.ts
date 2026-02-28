@@ -304,7 +304,7 @@ export function validateDesign(design: unknown): ValidationResult {
     if (board.width > 0 && board.height > 0) {
       for (const comp of components) {
         if (!isValidPosition(comp.pcbPosition)) continue;
-        const fp = getFootprint(comp.package, comp.type);
+        const fp = getFootprint(comp.package, comp.type, comp.value);
         const bounds = getComponentBounds(comp.pcbPosition.x, comp.pcbPosition.y, comp.pcbPosition.rotation, fp);
 
         // Connectors are allowed to overhang — they mount at board edges
@@ -387,8 +387,8 @@ export function validateDesign(design: unknown): ValidationResult {
       const b = components[j];
       if (!isValidPosition(a.pcbPosition) || !isValidPosition(b.pcbPosition)) continue;
 
-      const fpA = getFootprint(a.package, a.type);
-      const fpB = getFootprint(b.package, b.type);
+      const fpA = getFootprint(a.package, a.type, a.value);
+      const fpB = getFootprint(b.package, b.type, b.value);
       const boundsA = getComponentBounds(a.pcbPosition.x, a.pcbPosition.y, a.pcbPosition.rotation, fpA);
       const boundsB = getComponentBounds(b.pcbPosition.x, b.pcbPosition.y, b.pcbPosition.rotation, fpB);
 
@@ -561,8 +561,8 @@ export function generateSpatialMap(design: { components: { ref: string; value: s
   }[] = [];
 
   for (const comp of components) {
-    if (!comp.pcbPosition || typeof comp.pcbPosition.x !== "number") continue;
-    const fp = getFootprint(comp.package, comp.type);
+    if (!comp.pcbPosition || typeof comp.pcbPosition.x !== "number" || typeof comp.pcbPosition.y !== "number") continue;
+    const fp = getFootprint(comp.package, comp.type, comp.value);
     const bounds = getComponentBounds(
       comp.pcbPosition.x, comp.pcbPosition.y,
       comp.pcbPosition.rotation, fp
@@ -626,13 +626,13 @@ export function generateSpatialMap(design: { components: { ref: string; value: s
  * Check if total component footprint area can fit on the board,
  * and suggest a larger board if not.
  */
-export function checkBoardCapacity(design: { components: { type: string; package: string }[]; board: { width: number; height: number } }): string | null {
+export function checkBoardCapacity(design: { components: { type: string; package: string; value?: string }[]; board: { width: number; height: number } }): string | null {
   const board = design.board;
   if (!board || board.width <= 0 || board.height <= 0) return null;
 
   let totalFootprintArea = 0;
   for (const comp of design.components) {
-    const fp = getFootprint(comp.package, comp.type);
+    const fp = getFootprint(comp.package, comp.type, comp.value);
     const totalW = fp.width + 2 * fp.keepout;
     const totalH = fp.height + 2 * fp.keepout;
     totalFootprintArea += totalW * totalH;

@@ -3,7 +3,14 @@
  *
  * Maps package names to physical dimensions (width, height, keepout in mm).
  * Used by the validator to compute bounding rectangles for overlap detection.
+ *
+ * Resolution priority:
+ * 1. Component library match (by value) — most accurate, per-component dimensions
+ * 2. Package name table lookup — covers standard packages
+ * 3. Type-based defaults — last-resort fallback
  */
+
+import { COMPONENT_LIBRARY } from "./componentLibrary.js";
 
 export interface FootprintDimensions {
   width: number;
@@ -98,18 +105,35 @@ const GENERIC_FALLBACK: FootprintDimensions = { width: 10.0, height: 10.0, keepo
  * Look up footprint dimensions for a component.
  *
  * Resolution order:
- * 1. Exact package name match in PACKAGE_FOOTPRINTS
- * 2. Prefix match (e.g. "PinHeader_1x4_P2.54mm" matches "PinHeader")
- * 3. Component type default (e.g. all resistors → Axial_TH size)
- * 4. Generic fallback (10x10mm)
+ * 1. Library match by value — most accurate (each component has its own footprint)
+ * 2. Exact package name match in PACKAGE_FOOTPRINTS
+ * 3. Dynamic PinHeader/JST sizing
+ * 4. Prefix match in known packages
+ * 5. Component type default (e.g. all resistors → Axial_TH size)
+ * 6. Generic fallback (10x10mm)
  */
-export function getFootprint(pkg: string, type?: string): FootprintDimensions {
-  // 1. Exact match
+export function getFootprint(pkg: string, type?: string, value?: string): FootprintDimensions {
+  // 1. Library match by value — resolves ambiguous packages like Module_4pin
+  if (value) {
+    const valueLower = value.toLowerCase();
+    const libraryMatch = COMPONENT_LIBRARY.find(c => {
+      const nameLower = c.name.toLowerCase();
+      const valLower = c.value.toLowerCase();
+      return nameLower === valueLower || valLower === valueLower
+        || valueLower.includes(nameLower) || nameLower.includes(valueLower)
+        || valueLower.includes(valLower) || valLower.includes(valueLower);
+    });
+    if (libraryMatch) {
+      return libraryMatch.footprint;
+    }
+  }
+
+  // 2. Exact package match
   if (PACKAGE_FOOTPRINTS[pkg]) {
     return PACKAGE_FOOTPRINTS[pkg];
   }
 
-  // 2. Prefix match — handles PinHeader_1xN_P2.54mm, JST_PH_SxB-PH-K_1xN...
+  // 3. Dynamic sizing — handles PinHeader_1xN_P2.54mm, JST_PH_SxB-PH-K_1xN...
   if (pkg.startsWith("PinHeader_1x")) {
     const pinMatch = pkg.match(/PinHeader_1x(\d+)/);
     const pinCount = pinMatch ? parseInt(pinMatch[1], 10) : 2;
@@ -121,19 +145,19 @@ export function getFootprint(pkg: string, type?: string): FootprintDimensions {
     return { width: pinCount * 2.0 + 2.0, height: 6.0, keepout: 1.0 };
   }
 
-  // 3. Check for prefix matches in known packages
+  // 4. Check for prefix matches in known packages
   for (const [key, dims] of Object.entries(PACKAGE_FOOTPRINTS)) {
     if (pkg.startsWith(key)) {
       return dims;
     }
   }
 
-  // 4. Type-based default
+  // 5. Type-based default
   if (type && TYPE_DEFAULTS[type]) {
     return TYPE_DEFAULTS[type];
   }
 
-  // 5. Generic fallback
+  // 6. Generic fallback
   return GENERIC_FALLBACK;
 }
 
