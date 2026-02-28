@@ -31,6 +31,15 @@ interface DesignBoard {
   cornerRadius: number;
 }
 
+interface DesignBranding {
+  layer: string;
+  layout: string;
+  position: { x: number; y: number };
+  scale: number;
+  name: string;
+  version: string;
+}
+
 interface CircuitDesign {
   name: string;
   description: string;
@@ -38,6 +47,7 @@ interface CircuitDesign {
   connections: DesignConnection[];
   board: DesignBoard;
   notes: string[];
+  branding?: DesignBranding;
 }
 
 export interface ValidationIssue {
@@ -297,6 +307,54 @@ export function validateDesign(design: unknown): ValidationResult {
           issues.push({ severity: "warning", code: "COMP_OFF_BOARD", message: `Component ${comp.ref} at PCB position (${x}, ${y}) may be outside board bounds (${board.width}x${board.height}mm)`, ref: comp.ref });
         }
       }
+    }
+  }
+
+  // ─── BRANDING CHECKS (optional, decorative) ──────────────
+  if (d.branding && typeof d.branding === "object") {
+    const b = d.branding as DesignBranding;
+
+    if (b.layer && !["front", "back"].includes(b.layer)) {
+      issues.push({
+        severity: "warning",
+        code: "BAD_BRANDING_LAYER",
+        message: `Branding layer "${b.layer}" should be "front" or "back"`,
+      });
+    }
+
+    if (b.layout && !["stacked", "horizontal"].includes(b.layout)) {
+      issues.push({
+        severity: "warning",
+        code: "BAD_BRANDING_LAYOUT",
+        message: `Branding layout "${b.layout}" should be "stacked" or "horizontal"`,
+      });
+    }
+
+    if (board && b.position && typeof b.position.x === "number" && typeof b.position.y === "number") {
+      const { x, y } = b.position;
+      if (x < 0 || x > board.width || y < 0 || y > board.height) {
+        issues.push({
+          severity: "warning",
+          code: "BRANDING_OFF_BOARD",
+          message: `Branding position (${x}, ${y}) is outside board bounds (${board.width}x${board.height}mm)`,
+        });
+      }
+    }
+
+    if (typeof b.scale === "number" && (b.scale < 0.3 || b.scale > 5)) {
+      issues.push({
+        severity: "warning",
+        code: "BAD_BRANDING_SCALE",
+        message: `Branding scale ${b.scale} seems unusual (expected 0.3-5)`,
+      });
+    }
+
+    if (b.version && typeof b.version === "string" && !/^\d{1,2}-\d{2}\s+v\d+$/.test(b.version)) {
+      issues.push({
+        severity: "warning",
+        code: "BAD_BRANDING_VERSION",
+        message: `Branding version "${b.version}" doesn't match expected "M-YY vN" format`,
+      });
     }
   }
 

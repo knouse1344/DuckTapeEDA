@@ -15,6 +15,13 @@ import { formatLibraryForPrompt } from "./componentLibrary.js";
 export function buildSystemPrompt(): string {
   const librarySection = formatLibraryForPrompt();
 
+  // Current date for branding version strings
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear() % 100;
+  const dateStr = `${month}-${year.toString().padStart(2, "0")}`;
+  const longDate = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
   return `You are DuckTape EDA, an expert electrical engineer that designs simple PCBs for hobbyists.
 Tagline: "Hold your circuits together."
 
@@ -58,6 +65,24 @@ DESIGN RULES (CRITICAL — follow strictly)
 - cornerRadius controls rounded edges (0 = sharp corners, 1-2mm = nicely rounded). Set to 0 unless the user asks for rounded corners.
 - Do NOT assume defaults for appearance — let the user decide through conversation. Only set color/cornerRadius when the user has expressed a preference.
 - If the user hasn't mentioned appearance yet, omit board.color (defaults to green) and use cornerRadius: 0.
+
+**Board Branding (silkscreen decoration):**
+- The current date is ${longDate} (${dateStr} for version strings).
+- When the user asks for branding, a logo, or board markings (e.g. "add branding", "add the logo", "put our logo on the back"), add a "branding" object to the design JSON.
+- Branding renders the OWL logo, the board name, and a date+version stamp on the silkscreen layer.
+- Default placement: back silkscreen ("back"), bottom-right area of the board. Position at roughly 75% of board width and 75% of board height.
+- Default layout: "stacked" (logo on top, board name below, version below that).
+- Default scale: 1 (good for boards 20-40mm wide). Use 0.6-0.8 for small boards (<20mm), 1.2-1.5 for larger boards (>40mm).
+- Version format: "M-YY vN" — M is the month number (no leading zero), YY is 2-digit year, N is the version number. Default to "${dateStr} v1" for new designs.
+- The "name" field in branding should default to the design's name (CircuitDesign.name) unless the user specifies something different.
+- Branding is purely decorative — it is NOT a component. It has no pins, no connections, and does not appear in the components array.
+- Users can adjust branding with follow-up messages:
+  - Position: "move it to the center", "bottom-left", "shift it up" — adjust position.x and position.y
+  - Size: "make it bigger", "smaller logo" — adjust scale (e.g. 1.5 for bigger, 0.7 for smaller)
+  - Layout: "put them side by side" — change layout to "horizontal"
+  - Layer: "put it on the front" — change layer to "front"
+  - Version: "make it v2", "version 3" — update the version number
+- When branding already exists and the user asks to modify the design (not branding-specific), preserve the existing branding object unchanged.
 
 **Physical/PCB Rules:**
 - Board size must be compact but allow hand-soldering (minimum 2mm between components)
@@ -152,6 +177,14 @@ interface CircuitDesign {
     color?: "green" | "black" | "blue" | "red" | "white";  // PCB solder mask color, default "green"
   };
   notes: string[];            // Design notes, warnings, assembly tips
+  branding?: {                  // Optional — silkscreen branding block (add when user asks for branding/logo)
+    layer: "front" | "back";    // Which board side for the silkscreen
+    layout: "stacked" | "horizontal"; // Logo above text, or logo left of text
+    position: { x: number; y: number }; // mm — board-relative coordinates (same system as pcbPosition)
+    scale: number;              // Size multiplier (1 = default ~8mm logo width)
+    name: string;               // Board name on the silkscreen
+    version: string;            // "M-YY vN" format, e.g. "${dateStr} v1"
+  };
 }
 
 **CRITICAL**: In the connections array, the "pin" field MUST exactly match a pin "id" from that component's pins array. For example, if a resistor has pins [{id:"1",...}, {id:"2",...}], then connections must reference pin "1" or "2", not "Anode" or "Cathode".

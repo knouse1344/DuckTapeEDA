@@ -5,6 +5,7 @@ export interface CircuitDesign {
   connections: Connection[];
   board: BoardSpec;
   notes: string[];
+  branding?: BrandingBlock;
 }
 
 export interface Component {
@@ -52,6 +53,21 @@ export interface Position {
   x: number;
   y: number;
   rotation: number;
+}
+
+export interface BrandingBlock {
+  /** Which silkscreen layer: front (top) or back (bottom) */
+  layer: "front" | "back";
+  /** Layout of logo + text: stacked (logo above text) or horizontal (logo left, text right) */
+  layout: "stacked" | "horizontal";
+  /** Position on the board in mm, same coordinate system as pcbPosition */
+  position: { x: number; y: number };
+  /** Size multiplier for the entire branding block (1 = default ~8mm logo width) */
+  scale: number;
+  /** Board name displayed on the silkscreen */
+  name: string;
+  /** Version string in "M-YY vN" format, e.g. "2-26 v1" */
+  version: string;
 }
 
 export interface ChatMessage {

@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import type { CircuitDesign, Component } from "../../types/circuit";
+import type { CircuitDesign, Component, BrandingBlock } from "../../types/circuit";
+import owlLogoUrl from "../../assets/owl-logo.png";
 
 // Board color palette
 const BOARD_COLORS: Record<string, number> = {
@@ -147,6 +148,11 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
     }
 
     scene.add(group);
+  }
+
+  // --- Branding ---
+  if (design.branding) {
+    renderBranding(scene, design.branding, board, boardThickness);
   }
 }
 
@@ -1544,6 +1550,168 @@ function addLabel(group: THREE.Group, text: string, x: number, z: number) {
   // Flat on board surface, facing up
   plane.rotation.x = -Math.PI / 2;
   plane.position.set(x, 0.06, z);
+  group.add(plane);
+}
+
+// ---------------------------------------------------------------------------
+// Branding rendering (OWL logo + board name + version on silkscreen)
+// ---------------------------------------------------------------------------
+
+const OWL_LOGO_ASPECT = 2629 / 530; // ~4.96:1 width:height from the source PNG
+
+/**
+ * Render the full branding block (logo + name + version) on the board surface.
+ */
+function renderBranding(
+  scene: THREE.Scene,
+  branding: BrandingBlock,
+  board: { width: number; height: number; color?: string },
+  boardThickness: number
+) {
+  const cx = board.width / 2;
+  const cz = board.height / 2;
+
+  // Convert from board coords to scene coords (centered at origin)
+  const sceneX = branding.position.x - cx;
+  const sceneZ = branding.position.y - cz;
+
+  const scale = branding.scale || 1;
+  const isFront = branding.layer === "front";
+  const isStacked = branding.layout !== "horizontal";
+
+  // Y positioning: front is above board surface, back is below
+  const surfaceY = isFront ? 0.06 : -boardThickness - 0.06;
+
+  const group = new THREE.Group();
+  group.position.set(sceneX, 0, sceneZ);
+
+  // Logo dimensions — 8mm wide at scale 1
+  const logoW = 8 * scale;
+  const logoH = logoW / OWL_LOGO_ASPECT;
+
+  if (isStacked) {
+    // Stacked layout: logo on top, name below, version below that
+    //   Z increases downward on the board (toward bottom edge)
+    renderOwlLogo(group, 0, surfaceY, 0, logoW, logoH, isFront);
+    addBrandingText(group, branding.name, 0, surfaceY, logoH / 2 + 1.2 * scale, 1.5 * scale, isFront);
+    addBrandingText(group, branding.version, 0, surfaceY, logoH / 2 + 1.2 * scale + 2.0 * scale, 1.0 * scale, isFront);
+  } else {
+    // Horizontal layout: logo on the left, text to the right
+    const textX = logoW / 2 + 1.0 * scale;
+    renderOwlLogo(group, -textX / 2, surfaceY, 0, logoW, logoH, isFront);
+    addBrandingText(group, branding.name, textX / 2, surfaceY, -0.8 * scale, 1.5 * scale, isFront);
+    addBrandingText(group, branding.version, textX / 2, surfaceY, 0.8 * scale, 1.0 * scale, isFront);
+  }
+
+  scene.add(group);
+}
+
+/**
+ * Load the OWL logo PNG and render it as a textured plane on the board surface.
+ * Recolors the logo to match the current silkscreen color via canvas compositing.
+ */
+function renderOwlLogo(
+  group: THREE.Group,
+  x: number,
+  y: number,
+  z: number,
+  width: number,
+  height: number,
+  faceUp: boolean
+) {
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    const canvasW = nextPowerOfTwo(img.width);
+    const canvasH = nextPowerOfTwo(img.height);
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Draw the logo centered on the power-of-two canvas
+    ctx.drawImage(img, (canvasW - img.width) / 2, (canvasH - img.height) / 2);
+
+    // Recolor to silkscreen color using compositing
+    ctx.globalCompositeOperation = "source-in";
+    const colorStr = "#" + currentSilkColor.toString(16).padStart(6, "0");
+    ctx.fillStyle = colorStr;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    );
+
+    plane.rotation.x = faceUp ? -Math.PI / 2 : Math.PI / 2;
+    plane.position.set(x, y, z);
+    group.add(plane);
+  };
+  img.src = owlLogoUrl;
+}
+
+/**
+ * Render branding text (name or version) as a canvas-texture plane.
+ * Like addLabel() but supports configurable size and front/back rendering.
+ */
+function addBrandingText(
+  group: THREE.Group,
+  text: string,
+  x: number,
+  y: number,
+  z: number,
+  textHeight: number,
+  faceUp: boolean
+) {
+  if (!text) return;
+
+  const canvas = document.createElement("canvas");
+  const fontSize = 64;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // Measure text to size canvas
+  ctx.font = `bold ${fontSize}px monospace`;
+  const metrics = ctx.measureText(text);
+  const textW = metrics.width;
+
+  canvas.width = nextPowerOfTwo(textW + 24);
+  canvas.height = nextPowerOfTwo(fontSize + 24);
+
+  // Redraw after resize
+  ctx.font = `bold ${fontSize}px monospace`;
+  const colorStr = "#" + currentSilkColor.toString(16).padStart(6, "0");
+  ctx.fillStyle = colorStr;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+
+  const aspect = canvas.width / canvas.height;
+  const labelW = textHeight * aspect;
+
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(labelW, textHeight),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+  );
+
+  plane.rotation.x = faceUp ? -Math.PI / 2 : Math.PI / 2;
+  plane.position.set(x, y, z);
   group.add(plane);
 }
 
