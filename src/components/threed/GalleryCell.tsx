@@ -153,7 +153,7 @@ export default function GalleryCell({ comp, label }: Props) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-64 cursor-grab active:cursor-grabbing"
+      className="w-full h-full min-h-64 cursor-grab active:cursor-grabbing"
     />
   );
 }
