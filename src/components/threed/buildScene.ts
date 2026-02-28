@@ -958,28 +958,40 @@ function buildPiPico(comp: Component): THREE.Group {
 
 function buildOLEDModule(comp: Component): THREE.Group {
   // Real dimensions: ~27 x 27mm PCB, 0.96" display (SSD1306 I2C module)
-  // Key features: dark PCB, black bezel with OLED screen, FPC ribbon, 4 mounting holes, 4-pin header
+  // Layout: pin header at +Z edge, display bezel centered in remaining area, FPC at -Z edge
+  //
+  // IMPORTANT: makeBeveledBox sets mesh.position internally for centering.
+  // To reposition a makeBeveledBox result, wrap it in a THREE.Group and
+  // move the group — do NOT override mesh.position.set() directly.
   const group = new THREE.Group();
   const pcbW = 27;
   const pcbD = 27;
   const pcbH = 1.2;
   const bezelH = 1.8;
 
-  // Dark blue/black PCB
+  // Dark blue/black PCB — centered at origin by makeBeveledBox
   const pcbMat = new THREE.MeshPhongMaterial({ color: 0x0a1a3a, specular: 0x111133, shininess: 25 });
   const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
   group.add(pcb);
 
-  // Display bezel (black frame around the screen)
+  // Display bezel — covers most of the PCB below the pin header area.
+  // Wrap in a group so we can offset it without breaking makeBeveledBox centering.
+  const bezelW = 25;
+  const bezelD = 20;
+  const bezelCenterZ = -1.5; // offset toward -Z to leave room for pin header at +Z edge
   const bezelMat = new THREE.MeshPhongMaterial({ color: 0x0a0a0a, specular: 0x111111, shininess: 15 });
-  const bezel = makeBeveledBox(25, bezelH, 16, 0.2, bezelMat);
-  bezel.position.set(0, pcbH, -2);
-  group.add(bezel);
+  const bezelMesh = makeBeveledBox(bezelW, bezelH, bezelD, 0.2, bezelMat);
+  const bezelGroup = new THREE.Group();
+  bezelGroup.add(bezelMesh);
+  bezelGroup.position.set(0, pcbH, bezelCenterZ);
+  group.add(bezelGroup);
 
-  // Active screen area — flush with bezel top (pcbH + bezelH - screenH/2)
+  // Active screen area — centered within the bezel, flush with bezel top
+  // BoxGeometry is centered by default so position.set works directly
   const screenH = 0.3;
   const screenW = 22;
-  const screenD = 11;
+  const screenD = 14;
+  const screenTopY = pcbH + bezelH;
   const screenMat = new THREE.MeshPhongMaterial({
     color: 0x050510,
     emissive: 0x001833,
@@ -991,11 +1003,10 @@ function buildOLEDModule(comp: Component): THREE.Group {
     new THREE.BoxGeometry(screenW, screenH, screenD),
     screenMat
   );
-  const screenTopY = pcbH + bezelH;
-  screen.position.set(0, screenTopY - screenH / 2, -2);
+  screen.position.set(0, screenTopY - screenH / 2, bezelCenterZ);
   group.add(screen);
 
-  // Thin border around screen perimeter (dark blue outline)
+  // Thin border around screen perimeter
   const borderEdges = new THREE.EdgesGeometry(
     new THREE.BoxGeometry(screenW + 0.2, 0.02, screenD + 0.2)
   );
@@ -1003,7 +1014,7 @@ function buildOLEDModule(comp: Component): THREE.Group {
     borderEdges,
     new THREE.LineBasicMaterial({ color: 0x1a3366 })
   );
-  borderLine.position.set(0, screenTopY + 0.01, -2);
+  borderLine.position.set(0, screenTopY + 0.01, bezelCenterZ);
   group.add(borderLine);
 
   // Simulated display content — 3 faint blue text lines
@@ -1022,24 +1033,24 @@ function buildOLEDModule(comp: Component): THREE.Group {
     textLine.position.set(
       -screenW / 2 + lineWidths[i] / 2 + 2,
       screenTopY + 0.02,
-      -2 - 3 + i * 3
+      bezelCenterZ - screenD / 2 + 2 + i * (screenD - 4) / 2
     );
     group.add(textLine);
   }
 
-  // Subtle screen reflection highlight — just above screen surface
+  // Subtle screen reflection highlight
   const glare = new THREE.Mesh(
-    new THREE.PlaneGeometry(18, 4),
+    new THREE.PlaneGeometry(18, 5),
     new THREE.MeshBasicMaterial({ color: 0x223355, transparent: true, opacity: 0.12 })
   );
   glare.rotation.x = -Math.PI / 2;
-  glare.position.set(-2, screenTopY + 0.03, -3);
+  glare.position.set(-2, screenTopY + 0.03, bezelCenterZ - 1);
   group.add(glare);
 
-  // FPC ribbon cable connecting PCB to display glass (tan strip on back edge)
+  // FPC ribbon cable at -Z edge of bezel
   const fpcMat = new THREE.MeshPhongMaterial({ color: 0xc4a35a, specular: 0x665533, shininess: 20 });
   const fpc = new THREE.Mesh(new THREE.BoxGeometry(20, 0.2, 2), fpcMat);
-  fpc.position.set(0, pcbH + 0.6, -pcbD / 2 + 6);
+  fpc.position.set(0, pcbH + 0.6, bezelCenterZ - bezelD / 2 + 1);
   group.add(fpc);
 
   // 4 mounting holes at PCB corners
