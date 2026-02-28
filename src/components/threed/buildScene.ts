@@ -1086,13 +1086,15 @@ function buildLCDModule(comp: Component): THREE.Group {
   const pcb = makeBeveledBox(pcbW, pcbH, pcbD, 0.3, pcbMat);
   group.add(pcb);
 
-  // LCD metal frame/bezel
+  // LCD metal frame/bezel — wrap in Group to preserve makeBeveledBox centering
   const frameMat = new THREE.MeshPhongMaterial({ color: 0x888888, specular: 0xaaaaaa, shininess: 60 });
-  const frame = makeBeveledBox(33, frameH, 60, 0.3, frameMat);
-  frame.position.set(0, pcbH, -5);
-  group.add(frame);
+  const frameMesh = makeBeveledBox(33, frameH, 60, 0.3, frameMat);
+  const frameGroup = new THREE.Group();
+  frameGroup.add(frameMesh);
+  frameGroup.position.set(0, pcbH, -5);
+  group.add(frameGroup);
 
-  // Display window — flush with frame top (pcbH + frameH - displayH/2)
+  // Display window — sits on top of the frame surface (offset +0.02 to avoid z-fighting)
   const displayH = 0.3;
   const displayMat = new THREE.MeshPhongMaterial({
     color: 0x0a2a0a,
@@ -1105,10 +1107,11 @@ function buildLCDModule(comp: Component): THREE.Group {
     new THREE.BoxGeometry(28, displayH, 14),
     displayMat
   );
-  display.position.set(0, pcbH + frameH - displayH / 2, -5);
+  display.position.set(0, pcbH + frameH + displayH / 2 + 0.02, -5);
   group.add(display);
 
   // Faint 16x2 character grid on the display surface
+  const displayTopY = pcbH + frameH + displayH + 0.02;
   const gridMat = new THREE.MeshBasicMaterial({ color: 0x0f3f0f, transparent: true, opacity: 0.4 });
   const charW = 1.5;
   const charD = 2.8;
@@ -1120,7 +1123,7 @@ function buildLCDModule(comp: Component): THREE.Group {
       cell.rotation.x = -Math.PI / 2;
       cell.position.set(
         gridStartX + col * 1.7,
-        pcbH + frameH + 0.01,
+        displayTopY + 0.01,
         gridStartZ + row * 3.5
       );
       group.add(cell);
