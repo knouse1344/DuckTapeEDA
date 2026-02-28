@@ -1,3 +1,5 @@
+import { getFootprint, getComponentBounds, rectanglesOverlap, rectangleGap } from "./footprintTable.js";
+
 /**
  * Design Validation Engine
  *
@@ -298,13 +300,32 @@ export function validateDesign(design: unknown): ValidationResult {
       issues.push({ severity: "error", code: "BAD_BOARD_HEIGHT", message: `Board height ${board.height}mm is invalid (must be 1-300mm)` });
     }
 
-    // Check components fit on board
+    // Check component footprints fit on board
     if (board.width > 0 && board.height > 0) {
       for (const comp of components) {
         if (!isValidPosition(comp.pcbPosition)) continue;
-        const { x, y } = comp.pcbPosition;
-        if (x < 0 || x > board.width || y < 0 || y > board.height) {
-          issues.push({ severity: "warning", code: "COMP_OFF_BOARD", message: `Component ${comp.ref} at PCB position (${x}, ${y}) may be outside board bounds (${board.width}x${board.height}mm)`, ref: comp.ref });
+        const fp = getFootprint(comp.package, comp.type);
+        const bounds = getComponentBounds(comp.pcbPosition.x, comp.pcbPosition.y, comp.pcbPosition.rotation, fp);
+
+        // Connectors are allowed to overhang — they mount at board edges
+        if (comp.type === "connector") {
+          const centerOnBoard = comp.pcbPosition.x >= 0 && comp.pcbPosition.x <= board.width &&
+                                comp.pcbPosition.y >= 0 && comp.pcbPosition.y <= board.height;
+          if (!centerOnBoard) {
+            issues.push({ severity: "warning", code: "COMP_OFF_BOARD", message: `Connector ${comp.ref} center is outside board bounds (${board.width}x${board.height}mm)`, ref: comp.ref });
+          }
+        } else {
+          // Non-connectors: entire footprint must be on the board (with 0.5mm tolerance)
+          if (bounds.left < -0.5 || bounds.right > board.width + 0.5 || bounds.top < -0.5 || bounds.bottom > board.height + 0.5) {
+            const totalW = (fp.width + 2 * fp.keepout).toFixed(1);
+            const totalH = (fp.height + 2 * fp.keepout).toFixed(1);
+            issues.push({
+              severity: "warning",
+              code: "FOOTPRINT_OFF_BOARD",
+              message: `${comp.ref} footprint (${totalW}x${totalH}mm) extends outside board bounds. Bounds: [${bounds.left.toFixed(1)},${bounds.top.toFixed(1)}]-[${bounds.right.toFixed(1)},${bounds.bottom.toFixed(1)}] on a ${board.width}x${board.height}mm board. Move it inward or increase board size.`,
+              ref: comp.ref,
+            });
+          }
         }
       }
     }
@@ -358,18 +379,49 @@ export function validateDesign(design: unknown): ValidationResult {
     }
   }
 
-  // ─── OVERLAP CHECK ──────────────────────────────────────
+  // ─── FOOTPRINT-AWARE OVERLAP CHECK ───────────────────────
+  const MIN_GAP = 0.5; // mm — minimum gap between component footprints
   for (let i = 0; i < components.length; i++) {
     for (let j = i + 1; j < components.length; j++) {
       const a = components[i];
       const b = components[j];
       if (!isValidPosition(a.pcbPosition) || !isValidPosition(b.pcbPosition)) continue;
-      const dist = Math.sqrt(
-        (a.pcbPosition.x - b.pcbPosition.x) ** 2 +
-        (a.pcbPosition.y - b.pcbPosition.y) ** 2
-      );
-      if (dist < 1.5) {
-        issues.push({ severity: "warning", code: "OVERLAP", message: `Components ${a.ref} and ${b.ref} are only ${dist.toFixed(1)}mm apart on PCB — they may overlap`, ref: a.ref });
+
+      const fpA = getFootprint(a.package, a.type);
+      const fpB = getFootprint(b.package, b.type);
+      const boundsA = getComponentBounds(a.pcbPosition.x, a.pcbPosition.y, a.pcbPosition.rotation, fpA);
+      const boundsB = getComponentBounds(b.pcbPosition.x, b.pcbPosition.y, b.pcbPosition.rotation, fpB);
+
+      const totalA = `${(fpA.width + 2 * fpA.keepout).toFixed(1)}x${(fpA.height + 2 * fpA.keepout).toFixed(1)}mm`;
+      const totalB = `${(fpB.width + 2 * fpB.keepout).toFixed(1)}x${(fpB.height + 2 * fpB.keepout).toFixed(1)}mm`;
+
+      if (rectanglesOverlap(boundsA, boundsB)) {
+        // Compute minimum displacement to separate
+        const overlapRight = boundsA.right - boundsB.left;
+        const overlapLeft = boundsB.right - boundsA.left;
+        const overlapDown = boundsA.bottom - boundsB.top;
+        const overlapUp = boundsB.bottom - boundsA.top;
+        const minShift = Math.min(overlapRight, overlapLeft, overlapDown, overlapUp);
+
+        issues.push({
+          severity: "error",
+          code: "FOOTPRINT_OVERLAP",
+          message: `${a.ref} (${totalA} footprint) overlaps ${b.ref} (${totalB} footprint). ` +
+            `${a.ref} occupies [${boundsA.left.toFixed(1)},${boundsA.top.toFixed(1)}]-[${boundsA.right.toFixed(1)},${boundsA.bottom.toFixed(1)}], ` +
+            `${b.ref} occupies [${boundsB.left.toFixed(1)},${boundsB.top.toFixed(1)}]-[${boundsB.right.toFixed(1)},${boundsB.bottom.toFixed(1)}]. ` +
+            `Move one component at least ${(minShift + MIN_GAP).toFixed(1)}mm to clear.`,
+          ref: a.ref,
+        });
+      } else {
+        const gap = rectangleGap(boundsA, boundsB);
+        if (gap < MIN_GAP) {
+          issues.push({
+            severity: "warning",
+            code: "TIGHT_CLEARANCE",
+            message: `${a.ref} (${totalA}) and ${b.ref} (${totalB}) have only ${gap.toFixed(1)}mm clearance — minimum recommended is ${MIN_GAP}mm.`,
+            ref: a.ref,
+          });
+        }
       }
     }
   }
