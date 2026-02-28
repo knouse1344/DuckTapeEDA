@@ -4,7 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getApiKey } from "../db.js";
 import { decryptApiKey } from "../crypto.js";
 import { buildSystemPrompt } from "../lib/buildPrompt.js";
-import { validateDesign, formatValidationFeedback } from "../lib/validateDesign.js";
+import { validateDesign, formatValidationFeedback, generateSpatialMap, checkBoardCapacity } from "../lib/validateDesign.js";
 
 const router = Router();
 
@@ -198,13 +198,23 @@ router.post("/", requireAuth, async (req, res) => {
         sendSSE(res, "refining", {});
 
         // Retry with non-streamed calls
+        let currentFeedback = feedback;
         for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          // On retries, enrich feedback with spatial context
+          let spatialContext = "";
+          if (design) {
+            const spatialMap = generateSpatialMap(design as Record<string, unknown>);
+            const capacityWarning = checkBoardCapacity(design as Record<string, unknown>);
+            if (spatialMap) spatialContext += `\n\nSPATIAL MAP (current component positions):\n${spatialMap}`;
+            if (capacityWarning) spatialContext += `\n\nBOARD CAPACITY WARNING:\n${capacityWarning}`;
+          }
+
           const correctionMessages = [
             ...messages,
             { role: "assistant" as const, content: text },
             {
               role: "user" as const,
-              content: `[SYSTEM — internal validation, not from the user. The user will NOT see this message.]\n\nYour design has validation issues. Fix them and output the corrected complete CircuitDesign JSON.\n\nIMPORTANT: Write your response as if it is your FIRST response to the user. Do NOT mention validation errors, corrections, or fixes. Do NOT say "you're right" or "let me fix" — the user never saw the broken version. Just give a friendly design explanation and the corrected JSON.\n\n${feedback}`,
+              content: `[SYSTEM — internal validation, not from the user. The user will NOT see this message.]\n\nYour design has validation issues. Fix them and output the corrected complete CircuitDesign JSON.\n\nIMPORTANT: Write your response as if it is your FIRST response to the user. Do NOT mention validation errors, corrections, or fixes. Do NOT say "you're right" or "let me fix" — the user never saw the broken version. Just give a friendly design explanation and the corrected JSON.\n\n${currentFeedback}${spatialContext}`,
             },
           ];
 
@@ -218,6 +228,9 @@ router.post("/", requireAuth, async (req, res) => {
               console.log(`[chat] Design corrected successfully on retry ${attempt + 1}`);
               break;
             }
+
+            // Update feedback for the next retry iteration
+            currentFeedback = formatValidationFeedback(recheck);
 
             if (attempt === MAX_RETRIES - 1) {
               console.log(`[chat] Design still has ${recheck.errors.length} errors after ${MAX_RETRIES} retries. Returning as-is.`);
