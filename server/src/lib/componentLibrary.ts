@@ -14,6 +14,15 @@ export interface LibraryPin {
   type: "power" | "ground" | "signal" | "passive";
 }
 
+export interface Footprint {
+  /** Body width in mm (x-axis when rotation=0) */
+  width: number;
+  /** Body height in mm (y-axis when rotation=0) */
+  height: number;
+  /** Clearance zone in mm around the body (for pads, leads, soldering access) */
+  keepout: number;
+}
+
 export interface LibraryComponent {
   /** Unique ID within the library, e.g. "RES_330_TH" */
   id: string;
@@ -35,6 +44,8 @@ export interface LibraryComponent {
   specs?: Record<string, string>;
   /** Tags for search/matching, e.g. ["power", "usb", "5v"] */
   tags: string[];
+  /** Physical footprint dimensions for PCB layout collision detection */
+  footprint: Footprint;
 }
 
 // ─── RESISTORS ───────────────────────────────────────────────
@@ -52,6 +63,7 @@ const resistors: LibraryComponent[] = [
     ],
     specs: { power: "0.25W", tolerance: "5%" },
     tags: ["passive", "through-hole", "basic"],
+    footprint: { width: 9.0, height: 3.0, keepout: 1.5 },
   },
   {
     id: "RES_0805",
@@ -66,6 +78,7 @@ const resistors: LibraryComponent[] = [
     ],
     specs: { power: "0.125W", tolerance: "1%" },
     tags: ["passive", "smd", "basic"],
+    footprint: { width: 2.0, height: 1.25, keepout: 0.5 },
   },
 ];
 
@@ -84,6 +97,7 @@ const capacitors: LibraryComponent[] = [
     ],
     specs: { voltage: "50V", type: "ceramic" },
     tags: ["passive", "through-hole", "decoupling", "basic"],
+    footprint: { width: 5.0, height: 5.0, keepout: 1.0 },
   },
   {
     id: "CAP_ELECTROLYTIC_TH",
@@ -98,6 +112,7 @@ const capacitors: LibraryComponent[] = [
     ],
     specs: { voltage: "25V", type: "electrolytic", polarized: "yes" },
     tags: ["passive", "through-hole", "filtering", "polarized"],
+    footprint: { width: 5.0, height: 5.0, keepout: 1.0 },
   },
   {
     id: "CAP_0805",
@@ -112,6 +127,7 @@ const capacitors: LibraryComponent[] = [
     ],
     specs: { voltage: "25V", type: "ceramic" },
     tags: ["passive", "smd", "decoupling"],
+    footprint: { width: 2.0, height: 1.25, keepout: 0.5 },
   },
 ];
 
@@ -130,6 +146,7 @@ const leds: LibraryComponent[] = [
     ],
     specs: { forwardVoltage: "2.0V (red), 3.0V (blue/white)", forwardCurrent: "20mA" },
     tags: ["indicator", "through-hole", "basic"],
+    footprint: { width: 5.0, height: 5.0, keepout: 1.0 },
   },
   {
     id: "LED_0805",
@@ -144,6 +161,7 @@ const leds: LibraryComponent[] = [
     ],
     specs: { forwardVoltage: "2.0V (red), 3.0V (blue/white)", forwardCurrent: "20mA" },
     tags: ["indicator", "smd"],
+    footprint: { width: 2.0, height: 1.25, keepout: 0.5 },
   },
 ];
 
@@ -163,6 +181,7 @@ const diodes: LibraryComponent[] = [
     ],
     specs: { maxVoltage: "100V", maxCurrent: "200mA" },
     tags: ["protection", "through-hole", "signal"],
+    footprint: { width: 7.0, height: 2.5, keepout: 1.5 },
   },
   {
     id: "DIODE_1N4007",
@@ -178,6 +197,7 @@ const diodes: LibraryComponent[] = [
     ],
     specs: { maxVoltage: "1000V", maxCurrent: "1A" },
     tags: ["protection", "through-hole", "power", "rectifier"],
+    footprint: { width: 9.0, height: 3.0, keepout: 1.5 },
   },
 ];
 
@@ -199,6 +219,7 @@ const connectors: LibraryComponent[] = [
     ],
     specs: { voltage: "5V", maxCurrent: "3A (with proper CC resistors)" },
     tags: ["connector", "usb", "power", "5v"],
+    footprint: { width: 9.0, height: 7.5, keepout: 1.0 },
   },
   {
     id: "CONN_PIN_HEADER_2",
@@ -212,6 +233,7 @@ const connectors: LibraryComponent[] = [
       { id: "2", name: "Pin 2", type: "signal" },
     ],
     tags: ["connector", "through-hole", "header"],
+    footprint: { width: 5.08, height: 2.54, keepout: 1.0 },
   },
   {
     id: "CONN_PIN_HEADER_4",
@@ -227,6 +249,7 @@ const connectors: LibraryComponent[] = [
       { id: "4", name: "Pin 4", type: "signal" },
     ],
     tags: ["connector", "through-hole", "header"],
+    footprint: { width: 10.16, height: 2.54, keepout: 1.0 },
   },
   {
     id: "CONN_BARREL_JACK",
@@ -242,6 +265,7 @@ const connectors: LibraryComponent[] = [
     ],
     specs: { innerDiameter: "2.1mm", outerDiameter: "5.5mm" },
     tags: ["connector", "through-hole", "power", "dc"],
+    footprint: { width: 14.0, height: 9.0, keepout: 1.0 },
   },
   {
     id: "CONN_SCREW_TERM_2",
@@ -255,6 +279,7 @@ const connectors: LibraryComponent[] = [
       { id: "2", name: "Pin 2", type: "signal" },
     ],
     tags: ["connector", "through-hole", "terminal", "power"],
+    footprint: { width: 10.16, height: 7.5, keepout: 1.0 },
   },
   {
     id: "CONN_JST_PH_3",
@@ -271,6 +296,7 @@ const connectors: LibraryComponent[] = [
     ],
     specs: { pitch: "2.0mm", ratedCurrent: "2A", ratedVoltage: "100V" },
     tags: ["connector", "smd", "jst", "wire-to-board", "small"],
+    footprint: { width: 8.0, height: 6.0, keepout: 1.0 },
   },
   {
     id: "CONN_JST_PH_4",
@@ -288,10 +314,11 @@ const connectors: LibraryComponent[] = [
     ],
     specs: { pitch: "2.0mm", ratedCurrent: "2A", ratedVoltage: "100V" },
     tags: ["connector", "smd", "jst", "wire-to-board", "small"],
+    footprint: { width: 10.0, height: 6.0, keepout: 1.0 },
   },
 ];
 
-// ─── VOLTAGE REGULATORS ──────────────────────────────────────
+// ──��� VOLTAGE REGULATORS ───────────────────────────────────���──
 const regulators: LibraryComponent[] = [
   {
     id: "REG_AMS1117_3V3",
@@ -308,6 +335,7 @@ const regulators: LibraryComponent[] = [
     ],
     specs: { inputVoltage: "4.5V-15V", outputVoltage: "3.3V", maxCurrent: "1A", dropout: "1.3V" },
     tags: ["regulator", "power", "3.3v", "ldo", "smd"],
+    footprint: { width: 6.5, height: 3.5, keepout: 0.5 },
   },
   {
     id: "REG_7805",
@@ -324,10 +352,11 @@ const regulators: LibraryComponent[] = [
     ],
     specs: { inputVoltage: "7V-35V", outputVoltage: "5V", maxCurrent: "1.5A" },
     tags: ["regulator", "power", "5v", "linear", "through-hole"],
+    footprint: { width: 10.0, height: 4.5, keepout: 1.5 },
   },
 ];
 
-// ─── SWITCHES ────────────────────────────────────────────────
+// ─���─ SWITCHES ───────────────��────────────────────��───────────
 const switches: LibraryComponent[] = [
   {
     id: "SW_TACTILE_6MM",
@@ -343,6 +372,7 @@ const switches: LibraryComponent[] = [
       { id: "4", name: "B2", type: "passive" },
     ],
     tags: ["switch", "through-hole", "input", "momentary"],
+    footprint: { width: 6.0, height: 6.0, keepout: 1.0 },
   },
   {
     id: "SW_SLIDE_SPDT",
@@ -357,10 +387,11 @@ const switches: LibraryComponent[] = [
       { id: "3", name: "B", type: "passive" },
     ],
     tags: ["switch", "through-hole", "power", "toggle"],
+    footprint: { width: 8.5, height: 3.5, keepout: 1.0 },
   },
 ];
 
-// ─── MOSFETS ─────────────────────────────────────────────────
+// ─── MOSFETS ─────────────────────���───────────────────────────
 const mosfets: LibraryComponent[] = [
   {
     id: "MOSFET_IRLZ44N",
@@ -377,6 +408,7 @@ const mosfets: LibraryComponent[] = [
     ],
     specs: { vds: "55V", id: "47A", vgsThreshold: "1-2V", rdsOn: "0.022 ohm" },
     tags: ["mosfet", "n-channel", "through-hole", "power", "switching"],
+    footprint: { width: 10.0, height: 4.5, keepout: 1.5 },
   },
   {
     id: "MOSFET_2N7000",
@@ -393,6 +425,7 @@ const mosfets: LibraryComponent[] = [
     ],
     specs: { vds: "60V", id: "200mA", vgsThreshold: "0.8-3V" },
     tags: ["mosfet", "n-channel", "through-hole", "signal", "small"],
+    footprint: { width: 4.5, height: 3.5, keepout: 1.0 },
   },
 ];
 
@@ -418,6 +451,7 @@ const ics: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "4.5V-16V", maxOutputCurrent: "200mA" },
     tags: ["ic", "timer", "through-hole", "oscillator"],
+    footprint: { width: 10.0, height: 7.0, keepout: 1.0 },
   },
   {
     id: "IC_ATMEGA328P",
@@ -459,6 +493,7 @@ const ics: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "1.8V-5.5V", flash: "32KB", sram: "2KB", clockSpeed: "up to 20MHz" },
     tags: ["ic", "microcontroller", "through-hole", "avr", "arduino"],
+    footprint: { width: 36.0, height: 7.5, keepout: 1.5 },
   },
   {
     id: "IC_ESP32_DEVKIT",
@@ -491,6 +526,7 @@ const ics: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "5V (VIN) or 3.3V", wifi: "802.11 b/g/n", bluetooth: "BLE 4.2", flash: "4MB" },
     tags: ["ic", "microcontroller", "wifi", "bluetooth", "esp32", "module"],
+    footprint: { width: 52.0, height: 28.0, keepout: 1.5 },
   },
 ];
 
@@ -512,6 +548,7 @@ const addressableLeds: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3.5V-5.3V", maxCurrent: "60mA (20mA per color)", protocol: "Single-wire NRZ", dataRate: "800kbps" },
     tags: ["led", "addressable", "rgb", "neopixel", "ws2812", "smd", "5050"],
+    footprint: { width: 5.0, height: 5.0, keepout: 0.5 },
   },
 ];
 
@@ -533,6 +570,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3.3V-5V", tempRange: "-40°C to 80°C", humidityRange: "0-100%", accuracy: "±0.5°C, ±2%RH" },
     tags: ["sensor", "temperature", "humidity", "through-hole", "digital", "iot"],
+    footprint: { width: 15.0, height: 20.0, keepout: 1.5 },
   },
   {
     id: "SENSOR_BME280",
@@ -550,6 +588,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3.3V-5V", interface: "I2C", tempRange: "-40°C to 85°C", pressureRange: "300-1100 hPa" },
     tags: ["sensor", "temperature", "humidity", "pressure", "i2c", "module", "iot", "weather"],
+    footprint: { width: 13.0, height: 10.0, keepout: 1.0 },
   },
   {
     id: "SENSOR_MPU6050",
@@ -571,6 +610,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3.3V-5V", interface: "I2C", accelRange: "±2/4/8/16g", gyroRange: "±250/500/1000/2000°/s" },
     tags: ["sensor", "accelerometer", "gyroscope", "imu", "motion", "i2c", "module", "iot"],
+    footprint: { width: 20.0, height: 16.0, keepout: 1.0 },
   },
   {
     id: "SENSOR_HC_SR04",
@@ -588,6 +628,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "5V", range: "2cm-400cm", resolution: "3mm", triggerPulse: "10us" },
     tags: ["sensor", "ultrasonic", "distance", "ranging", "module", "5v"],
+    footprint: { width: 45.0, height: 20.0, keepout: 1.5 },
   },
   {
     id: "SENSOR_PHOTORESISTOR",
@@ -602,6 +643,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { darkResistance: ">100k ohm", lightResistance: "~1k ohm" },
     tags: ["sensor", "light", "analog", "through-hole", "ldr", "passive"],
+    footprint: { width: 5.0, height: 5.0, keepout: 1.0 },
   },
   {
     id: "SENSOR_IR_RECEIVER",
@@ -618,6 +660,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "2.5V-5.5V", carrierFrequency: "38kHz", range: "up to 45m" },
     tags: ["sensor", "ir", "infrared", "remote", "receiver", "through-hole"],
+    footprint: { width: 4.5, height: 3.5, keepout: 1.0 },
   },
   {
     id: "SENSOR_PIR",
@@ -634,6 +677,7 @@ const sensors: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "5V-20V", outputVoltage: "3.3V", range: "up to 7m", angle: "110°" },
     tags: ["sensor", "motion", "pir", "infrared", "security", "module", "iot"],
+    footprint: { width: 32.0, height: 24.0, keepout: 1.5 },
   },
 ];
 
@@ -659,6 +703,7 @@ const comms: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "1.9V-3.6V (3.3V typical)", frequency: "2.4GHz ISM", dataRate: "250kbps/1Mbps/2Mbps", range: "100m+" },
     tags: ["wireless", "radio", "2.4ghz", "spi", "module", "iot", "3.3v"],
+    footprint: { width: 29.0, height: 15.0, keepout: 1.0 },
   },
   {
     id: "COMM_RFM95W",
@@ -688,6 +733,7 @@ const comms: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "1.8V-3.7V (3.3V typical)", frequency: "915MHz", sensitivity: "-148dBm", range: "10km+" },
     tags: ["wireless", "lora", "915mhz", "long-range", "spi", "module", "iot", "3.3v"],
+    footprint: { width: 23.0, height: 16.0, keepout: 1.0 },
   },
   {
     id: "COMM_HC05",
@@ -707,6 +753,7 @@ const comms: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3.6V-6V", bluetooth: "2.0+EDR", baudRate: "9600 default", range: "10m" },
     tags: ["wireless", "bluetooth", "uart", "serial", "module", "iot"],
+    footprint: { width: 27.0, height: 13.0, keepout: 1.0 },
   },
 ];
 
@@ -730,6 +777,7 @@ const power: LibraryComponent[] = [
     ],
     specs: { inputVoltage: "5V (micro-USB or pads)", chargeCurrent: "1A (adjustable via Rprog)", batteryVoltage: "4.2V", cutoff: "2.5V" },
     tags: ["power", "charger", "lipo", "battery", "module", "usb", "iot"],
+    footprint: { width: 26.0, height: 17.0, keepout: 1.0 },
   },
   {
     id: "PWR_MT3608",
@@ -747,6 +795,7 @@ const power: LibraryComponent[] = [
     ],
     specs: { inputVoltage: "2V-24V", outputVoltage: "5V-28V (adjustable)", maxCurrent: "2A", efficiency: "93%" },
     tags: ["power", "boost", "dc-dc", "step-up", "module", "battery"],
+    footprint: { width: 36.0, height: 17.0, keepout: 1.0 },
   },
   {
     id: "PWR_BATTERY_HOLDER_AA_2",
@@ -761,6 +810,7 @@ const power: LibraryComponent[] = [
     ],
     specs: { voltage: "3V (2x1.5V)", chemistry: "Alkaline or NiMH" },
     tags: ["power", "battery", "holder", "aa", "3v"],
+    footprint: { width: 58.0, height: 31.0, keepout: 2.0 },
   },
   {
     id: "PWR_BATTERY_HOLDER_18650",
@@ -775,6 +825,7 @@ const power: LibraryComponent[] = [
     ],
     specs: { voltage: "3.7V nominal (4.2V full, 3.0V empty)", chemistry: "Li-Ion" },
     tags: ["power", "battery", "holder", "18650", "lithium", "portable"],
+    footprint: { width: 77.0, height: 21.0, keepout: 2.0 },
   },
   {
     id: "PWR_FUSE_RESETTABLE",
@@ -789,6 +840,7 @@ const power: LibraryComponent[] = [
     ],
     specs: { holdCurrent: "500mA", tripCurrent: "1A", maxVoltage: "16V" },
     tags: ["protection", "fuse", "ptc", "resettable", "through-hole", "power"],
+    footprint: { width: 5.0, height: 5.0, keepout: 1.0 },
   },
 ];
 
@@ -810,6 +862,7 @@ const displays: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3.3V-5V", resolution: "128x64", interface: "I2C (0x3C)", color: "white or blue" },
     tags: ["display", "oled", "ssd1306", "i2c", "module", "iot", "128x64"],
+    footprint: { width: 27.0, height: 27.0, keepout: 1.0 },
   },
   {
     id: "DISP_LCD_1602_I2C",
@@ -827,6 +880,7 @@ const displays: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "5V", characters: "16x2", interface: "I2C", backlight: "yes" },
     tags: ["display", "lcd", "1602", "i2c", "module", "16x2"],
+    footprint: { width: 80.0, height: 36.0, keepout: 1.5 },
   },
 ];
 
@@ -845,6 +899,7 @@ const audio: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3V-5V", frequency: "2.3kHz", soundLevel: "85dB at 10cm" },
     tags: ["audio", "buzzer", "piezo", "active", "through-hole", "alarm"],
+    footprint: { width: 12.0, height: 12.0, keepout: 1.0 },
   },
   {
     id: "AUDIO_PASSIVE_BUZZER",
@@ -859,6 +914,7 @@ const audio: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "3V-5V", frequencyRange: "1kHz-5kHz", soundLevel: "85dB at 10cm" },
     tags: ["audio", "buzzer", "piezo", "passive", "through-hole", "tone", "pwm"],
+    footprint: { width: 12.0, height: 12.0, keepout: 1.0 },
   },
 ];
 
@@ -888,6 +944,7 @@ const motorDrivers: LibraryComponent[] = [
     ],
     specs: { motorVoltage: "2.7V-10.8V", currentPerChannel: "1.5A (2A peak)", channels: "2 DC or 1 stepper" },
     tags: ["motor", "driver", "h-bridge", "dc-motor", "stepper", "module", "iot"],
+    footprint: { width: 18.0, height: 15.0, keepout: 1.0 },
   },
   {
     id: "MOTOR_TB6612FNG",
@@ -917,6 +974,7 @@ const motorDrivers: LibraryComponent[] = [
     ],
     specs: { motorVoltage: "4.5V-13.5V", logicVoltage: "2.7V-5.5V", currentPerChannel: "1.2A (3A peak)", channels: "2 DC or 1 stepper" },
     tags: ["motor", "driver", "h-bridge", "dc-motor", "stepper", "module"],
+    footprint: { width: 20.0, height: 20.0, keepout: 1.0 },
   },
 ];
 
@@ -973,6 +1031,7 @@ const moreMcus: LibraryComponent[] = [
     ],
     specs: { processor: "Dual-core ARM Cortex-M0+ @ 133MHz", flash: "2MB", sram: "264KB", gpio: "26", supplyVoltage: "1.8V-5.5V (VSYS)" },
     tags: ["ic", "microcontroller", "rp2040", "pico", "arm", "module", "usb-c"],
+    footprint: { width: 51.0, height: 21.0, keepout: 1.5 },
   },
   {
     id: "IC_ARDUINO_NANO",
@@ -1015,6 +1074,7 @@ const moreMcus: LibraryComponent[] = [
     ],
     specs: { processor: "ATmega328P @ 16MHz", flash: "32KB", sram: "2KB", gpio: "22", supplyVoltage: "5V USB or 7-12V VIN" },
     tags: ["ic", "microcontroller", "arduino", "nano", "avr", "module", "breadboard"],
+    footprint: { width: 43.0, height: 18.0, keepout: 1.5 },
   },
 ];
 
@@ -1033,6 +1093,7 @@ const miscPassives: LibraryComponent[] = [
     ],
     specs: { frequency: "16MHz", loadCapacitance: "22pF", tolerance: "±20ppm" },
     tags: ["crystal", "oscillator", "16mhz", "through-hole", "clock"],
+    footprint: { width: 11.0, height: 5.0, keepout: 1.0 },
   },
   {
     id: "POT_10K_TH",
@@ -1048,6 +1109,7 @@ const miscPassives: LibraryComponent[] = [
     ],
     specs: { resistance: "10k ohm", taper: "linear (B)", power: "0.1W" },
     tags: ["passive", "potentiometer", "variable", "through-hole", "analog", "input"],
+    footprint: { width: 10.0, height: 10.0, keepout: 1.5 },
   },
   {
     id: "DIODE_SCHOTTKY_1N5819",
@@ -1063,6 +1125,7 @@ const miscPassives: LibraryComponent[] = [
     ],
     specs: { maxVoltage: "40V", maxCurrent: "1A", forwardDrop: "0.45V" },
     tags: ["diode", "schottky", "protection", "through-hole", "low-drop"],
+    footprint: { width: 9.0, height: 3.0, keepout: 1.5 },
   },
   {
     id: "TVS_SMBJ5V0A",
@@ -1078,6 +1141,7 @@ const miscPassives: LibraryComponent[] = [
     ],
     specs: { standoffVoltage: "5V", clampVoltage: "9.2V", peakPulseCurrent: "43A" },
     tags: ["diode", "tvs", "protection", "esd", "surge", "smd"],
+    footprint: { width: 4.5, height: 3.5, keepout: 0.5 },
   },
   {
     id: "CONN_PIN_HEADER_6",
@@ -1095,6 +1159,7 @@ const miscPassives: LibraryComponent[] = [
       { id: "6", name: "Pin 6", type: "signal" },
     ],
     tags: ["connector", "through-hole", "header", "serial", "programming"],
+    footprint: { width: 15.24, height: 2.54, keepout: 1.0 },
   },
   {
     id: "IC_74HC595",
@@ -1124,6 +1189,7 @@ const miscPassives: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "2V-6V", outputCurrent: "6mA per pin", shiftFrequency: "up to 25MHz" },
     tags: ["ic", "shift-register", "gpio-expander", "spi", "through-hole"],
+    footprint: { width: 20.0, height: 7.5, keepout: 1.0 },
   },
   {
     id: "IC_PCF8574",
@@ -1153,6 +1219,7 @@ const miscPassives: LibraryComponent[] = [
     ],
     specs: { supplyVoltage: "2.5V-6V", interface: "I2C", sinkCurrent: "25mA per pin", addresses: "0x20-0x27" },
     tags: ["ic", "gpio-expander", "i2c", "through-hole"],
+    footprint: { width: 20.0, height: 7.5, keepout: 1.0 },
   },
 ];
 
