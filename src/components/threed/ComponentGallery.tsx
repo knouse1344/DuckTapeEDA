@@ -25,7 +25,7 @@ export default function ComponentGallery() {
         <div className="flex-1 flex gap-6 min-h-0">
           {/* Large 3D preview */}
           <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <GalleryCell comp={focused.comp} label={focused.label} />
+            <GalleryCell comp={focused.comp} label={focused.label} interactive />
           </div>
 
           {/* Component info panel */}
@@ -95,7 +95,9 @@ export default function ComponentGallery() {
                 {item.comp.package}
               </span>
             </div>
-            <GalleryCell comp={item.comp} label={item.label} />
+            <div className="h-48">
+              <GalleryCell comp={item.comp} label={item.label} />
+            </div>
           </div>
         ))}
       </div>
