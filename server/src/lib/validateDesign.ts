@@ -539,3 +539,113 @@ export function formatValidationFeedback(result: ValidationResult): string {
 
   return lines.join("\n");
 }
+
+/**
+ * Generate a text-based spatial map of component placement on the board.
+ * Used in validation retry feedback so Claude can "see" the board layout.
+ */
+export function generateSpatialMap(design: { components: { ref: string; value: string; type: string; package: string; pcbPosition: { x: number; y: number; rotation: number } }[]; board: { width: number; height: number } }): string {
+  const board = design.board;
+  if (!board || board.width <= 0 || board.height <= 0) return "";
+
+  const components = design.components;
+  if (!components || components.length === 0) return "";
+
+  // Build component bounds list
+  const compBounds: {
+    ref: string;
+    value: string;
+    bounds: { left: number; top: number; right: number; bottom: number };
+    totalW: number;
+    totalH: number;
+  }[] = [];
+
+  for (const comp of components) {
+    if (!comp.pcbPosition || typeof comp.pcbPosition.x !== "number") continue;
+    const fp = getFootprint(comp.package, comp.type);
+    const bounds = getComponentBounds(
+      comp.pcbPosition.x, comp.pcbPosition.y,
+      comp.pcbPosition.rotation, fp
+    );
+    compBounds.push({
+      ref: comp.ref,
+      value: comp.value,
+      bounds,
+      totalW: fp.width + 2 * fp.keepout,
+      totalH: fp.height + 2 * fp.keepout,
+    });
+  }
+
+  const lines: string[] = [];
+  lines.push(`BOARD LAYOUT (${board.width}x${board.height}mm):`);
+  lines.push("");
+  lines.push("Component positions and footprints:");
+  for (const c of compBounds) {
+    lines.push(`  ${c.ref} (${c.value}): ${c.totalW.toFixed(1)}x${c.totalH.toFixed(1)}mm at center (${((c.bounds.left + c.bounds.right) / 2).toFixed(1)}, ${((c.bounds.top + c.bounds.bottom) / 2).toFixed(1)}) → occupies [${c.bounds.left.toFixed(1)},${c.bounds.top.toFixed(1)}]-[${c.bounds.right.toFixed(1)},${c.bounds.bottom.toFixed(1)}]`);
+  }
+
+  // Find overlaps and report them
+  const overlaps: string[] = [];
+  for (let i = 0; i < compBounds.length; i++) {
+    for (let j = i + 1; j < compBounds.length; j++) {
+      if (rectanglesOverlap(compBounds[i].bounds, compBounds[j].bounds)) {
+        overlaps.push(`  OVERLAP: ${compBounds[i].ref} overlaps ${compBounds[j].ref}`);
+      }
+    }
+  }
+  if (overlaps.length > 0) {
+    lines.push("");
+    lines.push("OVERLAPS DETECTED:");
+    lines.push(...overlaps);
+  }
+
+  // Suggest free zones
+  lines.push("");
+  lines.push("Available space (approximate free zones):");
+  const gridStep = Math.max(2, Math.min(board.width, board.height) / 10);
+  const freeZones: string[] = [];
+  for (let gx = gridStep; gx < board.width - gridStep; gx += gridStep) {
+    for (let gy = gridStep; gy < board.height - gridStep; gy += gridStep) {
+      const testRect = { left: gx - 3, top: gy - 3, right: gx + 3, bottom: gy + 3 };
+      const blocked = compBounds.some(c => rectanglesOverlap(c.bounds, testRect));
+      if (!blocked && freeZones.length < 5) {
+        freeZones.push(`  ~(${gx.toFixed(0)}, ${gy.toFixed(0)}) has clearance`);
+      }
+    }
+  }
+  if (freeZones.length > 0) {
+    lines.push(...freeZones);
+  } else {
+    lines.push("  Board is densely packed — consider increasing board size.");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Check if total component footprint area can fit on the board,
+ * and suggest a larger board if not.
+ */
+export function checkBoardCapacity(design: { components: { type: string; package: string }[]; board: { width: number; height: number } }): string | null {
+  const board = design.board;
+  if (!board || board.width <= 0 || board.height <= 0) return null;
+
+  let totalFootprintArea = 0;
+  for (const comp of design.components) {
+    const fp = getFootprint(comp.package, comp.type);
+    const totalW = fp.width + 2 * fp.keepout;
+    const totalH = fp.height + 2 * fp.keepout;
+    totalFootprintArea += totalW * totalH;
+  }
+
+  const boardArea = board.width * board.height;
+  if (totalFootprintArea > boardArea * 0.6) {
+    const neededArea = totalFootprintArea / 0.5;
+    const aspectRatio = board.width / board.height;
+    const suggestedH = Math.ceil(Math.sqrt(neededArea / aspectRatio));
+    const suggestedW = Math.ceil(suggestedH * aspectRatio);
+    return `Components require ~${Math.round(totalFootprintArea)}mm² of footprint area but the board is only ${boardArea}mm² (${board.width}x${board.height}mm). Consider increasing to at least ${suggestedW}x${suggestedH}mm.`;
+  }
+
+  return null;
+}
