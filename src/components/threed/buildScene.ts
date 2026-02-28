@@ -212,16 +212,17 @@ function buildResistor(comp: Component): THREE.Group {
     );
     group.add(body);
 
-    // End caps (metal terminations)
+    // End caps (metal terminations) — slightly taller/deeper than body to
+    // wrap around the ends and avoid z-fighting on coplanar faces
     const capMat = new THREE.MeshPhongMaterial({
       color: METAL_SILVER,
       shininess: 80,
     });
-    const capL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.2), capMat);
-    capL.position.set(-0.9, 0.25, 0);
+    const capL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.54, 1.24), capMat);
+    capL.position.set(-0.9, 0.27, 0);
     group.add(capL);
-    const capR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.2), capMat);
-    capR.position.set(0.9, 0.25, 0);
+    const capR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.54, 1.24), capMat);
+    capR.position.set(0.9, 0.27, 0);
     group.add(capR);
 
     // SMD pads
@@ -569,12 +570,13 @@ function buildCapacitor(comp: Component): THREE.Group {
   );
   group.add(body);
 
+  // End caps — slightly taller/deeper than body to avoid z-fighting
   const capMat = new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 });
-  const capL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 1.2), capMat);
-  capL.position.set(-0.9, 0.4, 0);
+  const capL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.84, 1.24), capMat);
+  capL.position.set(-0.9, 0.42, 0);
   group.add(capL);
-  const capR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 1.2), capMat);
-  capR.position.set(0.9, 0.4, 0);
+  const capR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.84, 1.24), capMat);
+  capR.position.set(0.9, 0.42, 0);
   group.add(capR);
 
   // SMD pads

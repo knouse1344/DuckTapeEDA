@@ -27,6 +27,40 @@ Your job is to modify a builder function based on the user's description of what
   - Flush with top: box.position.y = surfaceY + beveledBoxH - boxH/2
   - Sitting on top: box.position.y = surfaceY + beveledBoxH + boxH/2
 
+## CRITICAL — Common Pitfalls You Must Avoid
+
+### makeBeveledBox centering
+\`makeBeveledBox\` internally sets \`mesh.position.set(-w/2, 0, d/2)\` to center the geometry.
+If you call \`result.position.set(x, y, z)\` afterward, you OVERWRITE that centering and the
+geometry will be off-center (shifted by w/2 in X and d/2 in Z). This is the #1 cause of
+"part floating off to one side" bugs.
+
+**WRONG:**
+\`\`\`
+const bezel = makeBeveledBox(25, 2, 20, 0.2, mat);
+bezel.position.set(0, pcbH, -2); // BREAKS centering!
+\`\`\`
+
+**CORRECT — wrap in a Group:**
+\`\`\`
+const bezelMesh = makeBeveledBox(25, 2, 20, 0.2, mat);
+const bezelGroup = new THREE.Group();
+bezelGroup.add(bezelMesh);
+bezelGroup.position.set(0, pcbH, -2); // Group moves without overwriting mesh centering
+\`\`\`
+
+Note: Setting only \`result.position.y = value\` is safe because it doesn't touch X/Z centering.
+
+### Z-fighting (ghosting/flickering)
+When two surfaces occupy the exact same plane (e.g., an end cap face at Z=0.6 and a body face
+at Z=0.6), the GPU can't decide which to draw on top — causing visible flickering when rotating.
+
+**Fix:** Make overlapping parts slightly larger (+0.04mm) in the shared dimensions so their faces
+are offset, not coplanar. For example, if a body is 0.5mm tall and 1.2mm deep, make end caps
+0.54mm tall and 1.24mm deep. This also looks more realistic (terminations wrap around the body).
+
+For flat surfaces on top of another (like a display on a frame), offset Y by +0.02mm.
+
 ## Available Color Constants
 COPPER (0xb87333), SILKSCREEN (0xffffff), METAL_SILVER (0xc0c0c0),
 RESISTOR_BODY (0x3b2a1a), USB_METAL (0x888888), HASL_COLOR (0xd4a847),
