@@ -1291,7 +1291,11 @@ export function formatLibraryForPrompt(): string {
     lines.push(`\n### ${type.toUpperCase()}S`);
     for (const c of comps) {
       const pinStr = c.pins.map((p) => `${p.id}:${p.name}(${p.type})`).join(", ");
+      const fp = c.footprint;
+      const totalW = (fp.width + 2 * fp.keepout).toFixed(1);
+      const totalH = (fp.height + 2 * fp.keepout).toFixed(1);
       lines.push(`- **${c.id}**: ${c.name} [${c.package}]`);
+      lines.push(`  Footprint: ${fp.width}x${fp.height}mm body, ${fp.keepout}mm keepout → ${totalW}x${totalH}mm total`);
       lines.push(`  Pins: ${pinStr}`);
       if (c.partNumber) lines.push(`  MPN: ${c.partNumber}`);
       if (c.specs) {
