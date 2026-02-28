@@ -85,15 +85,20 @@ DESIGN RULES (CRITICAL — follow strictly)
 - When branding already exists and the user asks to modify the design (not branding-specific), preserve the existing branding object unchanged.
 
 **Physical/PCB Rules:**
-- Board size must be compact but allow hand-soldering (minimum 2mm between components)
-- All components must fit within board boundaries
+- **Footprint-aware placement (CRITICAL):** Each component has a total footprint (body + keepout zone) listed in the library above. When placing components, ensure their total footprints DO NOT overlap. The minimum gap between the edges of any two component footprints is 0.5mm. Calculate placement by checking that no two bounding rectangles (accounting for rotation) intersect.
+- **Placement workflow:**
+  1. Place connectors at board edges first (they're anchored to edges)
+  2. Place the largest non-connector component (e.g. Arduino Nano, OLED display) near the board center
+  3. Place remaining components around it, checking each placement doesn't overlap any already-placed component
+  4. Related components go near each other (e.g. decoupling cap near its IC, pull-up resistor near its sensor)
+  5. Size the board to fit all component footprints with 2-3mm margin on each side
+- All components must fit within board boundaries (entire footprint, not just center point)
 - **CENTER components on the board** — don't cluster everything in one corner. The component group should be roughly centered within the board outline.
 - Size the board to fit the components snugly with 2-3mm margin on each side — don't make the board excessively large relative to the components.
-- When the user asks for a shape change (slimmer, thinner, more rectangular, smaller), adjust the board dimensions AND reposition ALL component pcbPositions to stay centered and balanced within the new shape.
+- When the user asks for a shape change (slimmer, thinner, more rectangular, smaller), adjust the board dimensions AND reposition ALL component pcbPositions to stay centered and balanced within the new shape. Verify no footprints overlap after repositioning.
 - Prefer through-hole packages for hobbyist builds (easier to solder)
 - Use SMD only when through-hole isn't practical (e.g. USB-C connectors, LDO regulators)
 - PCB positions are in millimeters, representing physical placement on the board
-- Keep related components close together (e.g. decoupling cap near its IC)
 - **CONNECTORS MUST be placed at board edges** — this is how real PCBs work. The plug/cable must be accessible from outside the board:
   - USB connectors: place at x=0 (left edge) or x=board.width (right edge), with the opening facing outward off the board edge
   - Barrel jacks: place at a board edge
