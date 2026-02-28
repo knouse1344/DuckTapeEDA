@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, lazy, Suspense } from "react";
 import type { ChatMessage, CircuitDesign } from "./types/circuit";
 import { sendMessageStreaming } from "./services/claude";
 import {
@@ -12,6 +12,14 @@ import ChatPanel from "./components/ChatPanel";
 import DesignViewer from "./components/DesignViewer";
 import DesignsDrawer from "./components/DesignsDrawer";
 import LoginPage from "./components/LoginPage";
+
+// Dev-only component gallery — tree-shaken from production builds
+const isGalleryMode =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).has("gallery");
+const ComponentGallery = isGalleryMode
+  ? lazy(() => import("./components/threed/ComponentGallery"))
+  : null;
 
 export default function App() {
   const { user, token, loading: authLoading, logout } = useAuth();
@@ -34,6 +42,21 @@ export default function App() {
   const [checkFindings, setCheckFindings] = useState<CheckFinding[]>([]);
   const [checkAiText, setCheckAiText] = useState("");
   const checkAiRef = useRef("");
+
+  // Dev-only: component gallery bypasses auth
+  if (ComponentGallery) {
+    return (
+      <Suspense
+        fallback={
+          <div className="h-screen flex items-center justify-center bg-gray-50">
+            <div className="text-gray-400 text-sm">Loading gallery...</div>
+          </div>
+        }
+      >
+        <ComponentGallery />
+      </Suspense>
+    );
+  }
 
   // Show loading while checking auth
   if (authLoading) {

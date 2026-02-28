@@ -150,6 +150,16 @@ export function buildScene(scene: THREE.Scene, design: CircuitDesign) {
   }
 }
 
+/**
+ * Build a single component model for gallery / dev preview.
+ * Sets module-level silkscreen color (normally set by buildScene) and
+ * delegates to the existing buildComponent dispatcher.
+ */
+export function buildComponentForGallery(comp: Component): THREE.Group {
+  currentSilkColor = SILKSCREEN;
+  return buildComponent(comp);
+}
+
 function buildComponent(comp: Component): THREE.Group {
   // Check for specific named components first (value-based dispatch)
   const val = comp.value?.toLowerCase() || "";
@@ -962,27 +972,62 @@ function buildOLEDModule(comp: Component): THREE.Group {
 
   // Active screen area — flush with bezel top (pcbH + bezelH - screenH/2)
   const screenH = 0.3;
+  const screenW = 22;
+  const screenD = 11;
   const screenMat = new THREE.MeshPhongMaterial({
-    color: 0x020208,
-    emissive: 0x000811,
-    emissiveIntensity: 0.3,
-    specular: 0x333355,
-    shininess: 120,
+    color: 0x050510,
+    emissive: 0x001833,
+    emissiveIntensity: 0.6,
+    specular: 0x445577,
+    shininess: 140,
   });
   const screen = new THREE.Mesh(
-    new THREE.BoxGeometry(22, screenH, 11),
+    new THREE.BoxGeometry(screenW, screenH, screenD),
     screenMat
   );
-  screen.position.set(0, pcbH + bezelH - screenH / 2, -2);
+  const screenTopY = pcbH + bezelH;
+  screen.position.set(0, screenTopY - screenH / 2, -2);
   group.add(screen);
+
+  // Thin border around screen perimeter (dark blue outline)
+  const borderEdges = new THREE.EdgesGeometry(
+    new THREE.BoxGeometry(screenW + 0.2, 0.02, screenD + 0.2)
+  );
+  const borderLine = new THREE.LineSegments(
+    borderEdges,
+    new THREE.LineBasicMaterial({ color: 0x1a3366 })
+  );
+  borderLine.position.set(0, screenTopY + 0.01, -2);
+  group.add(borderLine);
+
+  // Simulated display content — 3 faint blue text lines
+  const textLineMat = new THREE.MeshBasicMaterial({
+    color: 0x3388cc,
+    transparent: true,
+    opacity: 0.25,
+  });
+  const lineWidths = [16, 12, 18];
+  for (let i = 0; i < 3; i++) {
+    const textLine = new THREE.Mesh(
+      new THREE.PlaneGeometry(lineWidths[i], 0.8),
+      textLineMat
+    );
+    textLine.rotation.x = -Math.PI / 2;
+    textLine.position.set(
+      -screenW / 2 + lineWidths[i] / 2 + 2,
+      screenTopY + 0.02,
+      -2 - 3 + i * 3
+    );
+    group.add(textLine);
+  }
 
   // Subtle screen reflection highlight — just above screen surface
   const glare = new THREE.Mesh(
     new THREE.PlaneGeometry(18, 4),
-    new THREE.MeshBasicMaterial({ color: 0x111133, transparent: true, opacity: 0.15 })
+    new THREE.MeshBasicMaterial({ color: 0x223355, transparent: true, opacity: 0.12 })
   );
   glare.rotation.x = -Math.PI / 2;
-  glare.position.set(-2, pcbH + bezelH + 0.01, -3);
+  glare.position.set(-2, screenTopY + 0.03, -3);
   group.add(glare);
 
   // FPC ribbon cable connecting PCB to display glass (tan strip on back edge)
@@ -1165,13 +1210,19 @@ function buildBuzzer(comp: Component): THREE.Group {
   body.position.y = height / 2 + 0.5;
   group.add(body);
 
-  // Domed top cap (slight hemisphere effect)
+  // Domed top cap — full hemisphere squashed flat, flush with cylinder top
+  // Body top is at Y = height/2 + 0.5 + height/2 = height + 0.5 = 4.5
+  const bodyTop = height + 0.5;
   const topFace = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 24, 8, 0, Math.PI * 2, 0, Math.PI / 6),
+    new THREE.SphereGeometry(radius, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2),
     new THREE.MeshPhongMaterial({ color: 0x222222, specular: 0x333333, shininess: 15 })
   );
-  topFace.position.y = height + 0.4;
+  topFace.scale.y = 0.15; // flatten to ~0.9mm dome
+  topFace.position.y = bodyTop;
   group.add(topFace);
+
+  // Surface Y for decorations sitting on top of the dome
+  const domeTop = bodyTop + radius * 0.15; // ~5.4
 
   // Tone hole in center of top
   const holeMat = new THREE.MeshPhongMaterial({ color: 0x0a0a0a });
@@ -1179,7 +1230,7 @@ function buildBuzzer(comp: Component): THREE.Group {
     new THREE.CylinderGeometry(1.5, 1.5, 0.3, 16),
     holeMat
   );
-  hole.position.y = height + 0.55;
+  hole.position.y = domeTop;
   group.add(hole);
 
   // Concentric rings on top (decorative)
@@ -1190,17 +1241,17 @@ function buildBuzzer(comp: Component): THREE.Group {
       ringMat
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = height + 0.55;
+    ring.position.y = domeTop;
     group.add(ring);
   }
 
   // Polarity marker (+ symbol on top, brighter for visibility)
   const plusMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
   const plusH = new THREE.Mesh(new THREE.BoxGeometry(2, 0.05, 0.3), plusMat);
-  plusH.position.set(-3, height + 0.65, 0);
+  plusH.position.set(-3, domeTop + 0.1, 0);
   group.add(plusH);
   const plusV = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 2), plusMat);
-  plusV.position.set(-3, height + 0.65, 0);
+  plusV.position.set(-3, domeTop + 0.1, 0);
   group.add(plusV);
 
   // Wire leads — realistic 7.62mm (0.3") spacing for 12mm buzzer
