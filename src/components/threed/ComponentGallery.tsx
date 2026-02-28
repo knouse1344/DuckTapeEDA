@@ -3,13 +3,10 @@ import GalleryCell from "./GalleryCell";
 
 export default function ComponentGallery() {
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
+    <div className="bg-gray-100 p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          Component Gallery (Dev)
-        </h1>
         <p className="text-sm text-gray-500">
-          Visual preview of every 3D model builder path. Orbit with click-drag,
+          Visual preview of every 3D component model. Orbit with click-drag,
           zoom with scroll.
         </p>
       </header>

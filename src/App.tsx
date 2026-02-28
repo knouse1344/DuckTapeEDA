@@ -13,13 +13,8 @@ import DesignViewer from "./components/DesignViewer";
 import DesignsDrawer from "./components/DesignsDrawer";
 import LoginPage from "./components/LoginPage";
 
-// Dev-only component gallery — tree-shaken from production builds
-const isGalleryMode =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).has("gallery");
-const ComponentGallery = isGalleryMode
-  ? lazy(() => import("./components/threed/ComponentGallery"))
-  : null;
+// Lazy-load component gallery (available in all environments)
+const ComponentGallery = lazy(() => import("./components/threed/ComponentGallery"));
 
 export default function App() {
   const { user, token, loading: authLoading, logout } = useAuth();
@@ -43,20 +38,8 @@ export default function App() {
   const [checkAiText, setCheckAiText] = useState("");
   const checkAiRef = useRef("");
 
-  // Dev-only: component gallery bypasses auth
-  if (ComponentGallery) {
-    return (
-      <Suspense
-        fallback={
-          <div className="h-screen flex items-center justify-center bg-gray-50">
-            <div className="text-gray-400 text-sm">Loading gallery...</div>
-          </div>
-        }
-      >
-        <ComponentGallery />
-      </Suspense>
-    );
-  }
+  // Component gallery toggle
+  const [showGallery, setShowGallery] = useState(false);
 
   // Show loading while checking auth
   if (authLoading) {
@@ -221,6 +204,12 @@ export default function App() {
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
+            onClick={() => setShowGallery(true)}
+            className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+          >
+            Components
+          </button>
+          <button
             onClick={() => setDrawerOpen(true)}
             className="text-sm text-blue-600 hover:text-blue-700 font-medium"
           >
@@ -269,6 +258,32 @@ export default function App() {
           />
         </div>
       </div>
+
+      {/* Component gallery overlay */}
+      {showGallery && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200">
+            <button
+              onClick={() => setShowGallery(false)}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              &larr; Back to Design
+            </button>
+            <span className="text-sm font-semibold text-gray-700">Component Gallery</span>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-gray-400 text-sm">Loading gallery...</div>
+                </div>
+              }
+            >
+              <ComponentGallery />
+            </Suspense>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
