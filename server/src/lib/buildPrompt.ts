@@ -12,7 +12,7 @@
 
 import { formatLibraryForPrompt } from "./componentLibrary.js";
 
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(padPositionTable?: string): string {
   const librarySection = formatLibraryForPrompt();
 
   // Current date for branding version strings
@@ -108,6 +108,19 @@ DESIGN RULES (CRITICAL — follow strictly)
   - The connector's pcbPosition.y should be roughly centered along the edge, and pcbPosition.x should be at 0 or board.width
   - Use rotation to orient the connector opening toward the outside of the board
 
+**Trace Routing Rules:**
+- You MUST generate a "traces" array in the design JSON with copper traces connecting all pads.
+- Each trace is a polyline: an array of {x, y} waypoints in mm (absolute board coordinates).
+- The first point MUST be at the source pad center. The last point MUST be at the destination pad center.
+- Each trace connects exactly TWO pads on the same net. A net with N pads needs N-1 traces (spanning tree).
+- Use 45-degree or 90-degree bends only. Route traces with L-shaped or Z-shaped paths to avoid obstacles.
+- All traces must stay within the board outline (0,0 to board.width, board.height).
+- Minimum clearance between traces on different nets: 0.2mm (including trace width).
+- Route power traces (VBUS, VCC, GND) with width 0.5mm. Route signal traces with width 0.25mm.
+- All traces are on the "front" copper layer (single-layer routing).
+- Keep traces simple — prefer short, direct paths with 1-2 bends maximum.
+- Do NOT route traces through component footprints (avoid the area occupied by other components).
+${padPositionTable ? `\n**Pad Position Reference:**\n${padPositionTable}\n` : ""}
 **Schematic Rules:**
 - Schematic positions should be on a grid of multiples of 50 for clean wiring
 - Power flows left-to-right or top-to-bottom
@@ -190,6 +203,12 @@ interface CircuitDesign {
     name: string;               // Board name on the silkscreen
     version: string;            // "M-YY vN" format, e.g. "${dateStr} v1"
   };
+  traces?: {
+    netName: string;       // Must match a connection's netName
+    width: number;         // mm — 0.25 signal, 0.5 power
+    layer: "front";        // Front copper only
+    points: { x: number; y: number }[];  // Polyline waypoints, first/last at pad centers
+  }[];
 }
 
 **CRITICAL**: In the connections array, the "pin" field MUST exactly match a pin "id" from that component's pins array. For example, if a resistor has pins [{id:"1",...}, {id:"2",...}], then connections must reference pin "1" or "2", not "Anode" or "Cathode".
@@ -198,5 +217,42 @@ interface CircuitDesign {
 
 When refining an existing design based on follow-up messages, output the complete updated CircuitDesign JSON (not a partial diff).
 
-If the user asks a question that doesn't require a design change, respond conversationally without JSON.`;
+If the user asks a question that doesn't require a design change, respond conversationally without JSON.
+
+═══════════════════════════════════════════════
+TRACE ROUTING EXAMPLE
+═══════════════════════════════════════════════
+
+For a simple board with a resistor R1 at (10, 8) and an LED D1 at (20, 8), connected by net "LED_ANODE":
+- R1 pin 2 pad is at (11.27, 8) and D1 pin 1 pad is at (18.73, 8).
+- Since they are aligned horizontally, a direct 2-point trace works:
+
+"traces": [
+  {
+    "netName": "LED_ANODE",
+    "width": 0.25,
+    "layer": "front",
+    "points": [
+      { "x": 11.27, "y": 8 },
+      { "x": 18.73, "y": 8 }
+    ]
+  }
+]
+
+For pads that are NOT aligned, use an L-shaped bend (2 segments, 3 points):
+
+"traces": [
+  {
+    "netName": "VBUS",
+    "width": 0.5,
+    "layer": "front",
+    "points": [
+      { "x": 2, "y": 5 },
+      { "x": 10, "y": 5 },
+      { "x": 10, "y": 12 }
+    ]
+  }
+]
+
+Each trace connects exactly two pads. A net with 3 pads (e.g., GND with 3 components) needs 2 traces forming a spanning tree.`;
 }
