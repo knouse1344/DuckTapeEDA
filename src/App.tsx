@@ -7,6 +7,7 @@ import {
   getDesign,
 } from "./services/designs";
 import { checkDesign, type CheckFinding } from "./services/designCheck";
+import { rerouteTraces } from "./services/reroute";
 import { useAuth } from "./contexts/AuthContext";
 import ChatPanel from "./components/ChatPanel";
 import DesignViewer from "./components/DesignViewer";
@@ -37,6 +38,9 @@ export default function App() {
   const [checkFindings, setCheckFindings] = useState<CheckFinding[]>([]);
   const [checkAiText, setCheckAiText] = useState("");
   const checkAiRef = useRef("");
+
+  // Re-route state
+  const [rerouting, setRerouting] = useState(false);
 
   // Component gallery toggle
   const [showGallery, setShowGallery] = useState(false);
@@ -213,10 +217,29 @@ export default function App() {
         components: prev.components.map(c =>
           c.ref === ref ? { ...c, pcbPosition: { x, y, rotation } } : c
         ),
+        traces: [],
       };
       debouncedSave(updated);
       return updated;
     });
+  };
+
+  const handleReroute = async () => {
+    if (!token || !currentDesign) return;
+    setRerouting(true);
+    try {
+      const newTraces = await rerouteTraces(token, currentDesign);
+      const updatedDesign = { ...currentDesign, traces: newTraces };
+      setCurrentDesign(updatedDesign);
+      if (currentDesignId) {
+        await updateDesign(token, currentDesignId, updatedDesign, messages);
+        setDrawerRefreshKey(k => k + 1);
+      }
+    } catch (err) {
+      console.error("Re-route failed:", err);
+    } finally {
+      setRerouting(false);
+    }
   };
 
   return (
@@ -286,6 +309,8 @@ export default function App() {
             checkAiText={checkAiText}
             onCloseCheck={clearCheckResults}
             onUpdatePosition={handleUpdatePosition}
+            onReroute={handleReroute}
+            rerouting={rerouting}
           />
         </div>
       </div>

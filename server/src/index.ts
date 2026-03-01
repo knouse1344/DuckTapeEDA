@@ -9,6 +9,7 @@ import { chatRouter } from "./routes/chat.js";
 import { designsRouter } from "./routes/designs.js";
 import { designCheckRouter } from "./routes/designCheck.js";
 import { modelFixRouter } from "./routes/modelFix.js";
+import { rerouteRouter } from "./routes/reroute.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,7 @@ app.use("/api/chat", chatRouter);
 app.use("/api/designs", designsRouter);
 app.use("/api/design-check", designCheckRouter);
 app.use("/api/model-fix", modelFixRouter);
+app.use("/api/reroute", rerouteRouter);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === "production") {

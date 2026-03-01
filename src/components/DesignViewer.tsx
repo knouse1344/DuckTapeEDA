@@ -16,6 +16,8 @@ interface Props {
   checkAiText?: string;
   onCloseCheck?: () => void;
   onUpdatePosition?: (ref: string, x: number, y: number, rotation: number) => void;
+  onReroute?: () => void;
+  rerouting?: boolean;
 }
 
 type Tab = "schematic" | "pcb" | "3d";
@@ -28,6 +30,8 @@ export default function DesignViewer({
   checkAiText = "",
   onCloseCheck,
   onUpdatePosition,
+  onReroute,
+  rerouting = false,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("pcb");
   const [showBomMenu, setShowBomMenu] = useState(false);
@@ -100,6 +104,19 @@ export default function DesignViewer({
         {/* Check Design button + Export buttons */}
         {design && (
           <div className="ml-auto flex items-center gap-2 pr-4">
+            {design.connections?.length > 0 && (!design.traces || design.traces.length === 0) && (
+              <button
+                onClick={onReroute}
+                disabled={rerouting || !onReroute}
+                className={`text-xs px-3 py-1.5 rounded font-medium transition-colors ${
+                  rerouting
+                    ? "bg-amber-100 text-amber-600 cursor-wait"
+                    : "border border-amber-400 text-amber-600 hover:bg-amber-50"
+                } disabled:opacity-50`}
+              >
+                {rerouting ? "Routing..." : "Re-route Traces"}
+              </button>
+            )}
             <button
               onClick={onCheckDesign}
               disabled={checking || !onCheckDesign}

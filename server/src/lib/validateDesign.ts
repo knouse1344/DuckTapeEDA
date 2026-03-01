@@ -696,7 +696,7 @@ export function checkBoardCapacity(design: { components: { type: string; package
  * Validate trace routes for structural correctness, board bounds,
  * trace-to-trace clearance, and net connectivity.
  */
-function validateRoutes(design: unknown): ValidationIssue[] {
+export function validateRoutes(design: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const d = design as Record<string, unknown>;
 
