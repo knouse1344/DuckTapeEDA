@@ -792,11 +792,12 @@ function buildWS2812B(comp: Component): THREE.Group {
 // ---------------------------------------------------------------------------
 
 function buildArduinoNano(comp: Component): THREE.Group {
-  // Real dimensions: 18.0 x 45.0 x 1.6mm PCB (Arduino Nano V3.0)
+  // Real dimensions from footprint table — width is X (long axis), height is Z (short axis)
   // Key features: Mini-USB, ATmega328P TQFP-32, CH340G, 2x15 pin headers, ICSP
   const group = new THREE.Group();
-  const pcbW = 18;
-  const pcbD = 45;
+  const fp = getFootprint(comp.package, comp.type, comp.value);
+  const pcbW = fp.width;   // long axis (X) — ~43mm
+  const pcbD = fp.height;  // short axis (Z) — ~18mm
   const pcbH = 1.6;
 
   // Blue PCB board
@@ -819,87 +820,89 @@ function buildArduinoNano(comp: Component): THREE.Group {
   dot.position.set(-2.5, pcbH + 1.01, -2.5);
   group.add(dot);
 
-  // CH340G USB-serial chip (near USB port)
-  addSMDChip(group, 5, 5, 0.8, 0, -pcbD / 2 + 9, pcbH);
+  // CH340G USB-serial chip (near USB port end, offset along long axis)
+  addSMDChip(group, 5, 5, 0.8, -pcbW / 2 + 9, 0, pcbH);
 
-  // Mini-USB port at one end (silver box)
+  // Mini-USB port at -X end (silver box) — depth along X, width along Z
   const usbMat = new THREE.MeshPhongMaterial({ color: USB_METAL, specular: 0xcccccc, shininess: 100 });
-  const usb = new THREE.Mesh(new THREE.BoxGeometry(7.5, 3.5, 5.5), usbMat);
-  usb.position.set(0, pcbH + 1.75, -pcbD / 2 + 2.5);
+  const usb = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.5, 7.5), usbMat);
+  usb.position.set(-pcbW / 2 + 2.5, pcbH + 1.75, 0);
   group.add(usb);
 
-  // USB port opening (dark)
+  // USB port opening (dark) — faces -X direction
   const usbOpen = new THREE.Mesh(
-    new THREE.BoxGeometry(6.5, 2.2, 1),
+    new THREE.BoxGeometry(1, 2.2, 6.5),
     new THREE.MeshPhongMaterial({ color: 0x1a1a1a })
   );
-  usbOpen.position.set(0, pcbH + 1.75, -pcbD / 2 + 0.01);
+  usbOpen.position.set(-pcbW / 2 + 0.01, pcbH + 1.75, 0);
   group.add(usbOpen);
 
-  // Crystal oscillator (silver can)
+  // Crystal oscillator (silver can) — was at (-4, y, 5), swap: (5, y, -4)
   const crystal = new THREE.Mesh(
     new THREE.CylinderGeometry(1.5, 1.5, 0.8, 12),
     new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 80 })
   );
-  crystal.position.set(-4, pcbH + 0.4, 5);
+  crystal.position.set(5, pcbH + 0.4, -4);
   group.add(crystal);
 
-  // Reset button (small silver square)
+  // Reset button (small silver square) — was at (5, y, -8), swap: (-8, y, 5)
   const resetBtn = new THREE.Mesh(
     new THREE.BoxGeometry(2.5, 1.2, 2.5),
     new THREE.MeshPhongMaterial({ color: METAL_SILVER, shininess: 60 })
   );
-  resetBtn.position.set(5, pcbH + 0.6, -8);
+  resetBtn.position.set(-8, pcbH + 0.6, 5);
   group.add(resetBtn);
 
-  // Two rows of 15 pin headers along edges
+  // Two rows of 15 pin headers along long edges (now run along X)
   const pitch = 2.54;
   const pinsPerSide = 15;
-  const headerCenterZ = -pcbD / 2 + 3 + (pinsPerSide - 1) * pitch / 2;
+  const headerCenterX = -pcbW / 2 + 3 + (pinsPerSide - 1) * pitch / 2;
   for (const side of [-1, 1]) {
-    addPinHeaderRow(group, pinsPerSide, pitch, side * (pcbW / 2 - 1.5), headerCenterZ, "z", pcbH);
+    addPinHeaderRow(group, pinsPerSide, pitch, headerCenterX, side * (pcbD / 2 - 1.5), "x", pcbH);
   }
 
-  // ICSP 2x3 header pads (6 gold dots near center)
+  // ICSP 2x3 header pads (6 gold dots) — was near z=10..15, swap to x=10..15
   const icspMat = new THREE.MeshPhongMaterial({ color: HASL_COLOR, specular: HASL_SPECULAR, shininess: 80 });
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 3; col++) {
       const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 8), icspMat);
-      pad.position.set(-1.27 + row * 2.54, pcbH + 0.02, 10 + col * 2.54);
+      pad.position.set(10 + col * 2.54, pcbH + 0.02, -1.27 + row * 2.54);
       group.add(pad);
     }
   }
 
-  // Power LED (green, tiny SMD)
+  // Power LED (green, tiny SMD) — was at (4, y, 12), swap: (12, y, 4)
   const pwrLed = new THREE.Mesh(
     new THREE.BoxGeometry(1.0, 0.5, 0.6),
     new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 })
   );
-  pwrLed.position.set(4, pcbH + 0.25, 12);
+  pwrLed.position.set(12, pcbH + 0.25, 4);
   group.add(pwrLed);
 
   // TX LED (green) and RX LED (orange) near the USB-serial chip
+  // TX was at (-4, y, -pcbD/2+12), swap: (-pcbW/2+12, y, -4)
   const txLed = new THREE.Mesh(
     new THREE.BoxGeometry(0.8, 0.4, 0.5),
     new THREE.MeshPhongMaterial({ color: 0x00cc44, emissive: 0x00cc44, emissiveIntensity: 0.2, transparent: true, opacity: 0.85 })
   );
-  txLed.position.set(-4, pcbH + 0.2, -pcbD / 2 + 12);
+  txLed.position.set(-pcbW / 2 + 12, pcbH + 0.2, -4);
   group.add(txLed);
 
+  // RX was at (-4, y, -pcbD/2+14), swap: (-pcbW/2+14, y, -4)
   const rxLed = new THREE.Mesh(
     new THREE.BoxGeometry(0.8, 0.4, 0.5),
     new THREE.MeshPhongMaterial({ color: 0xff8800, emissive: 0xff8800, emissiveIntensity: 0.2, transparent: true, opacity: 0.85 })
   );
-  rxLed.position.set(-4, pcbH + 0.2, -pcbD / 2 + 14);
+  rxLed.position.set(-pcbW / 2 + 14, pcbH + 0.2, -4);
   group.add(rxLed);
 
   // Silkscreen "NANO" text on PCB
   addLabel(group, "NANO", 0, 0);
 
-  // SMD passives scattered on board
-  addSMDPassives(group, 4, pcbH, 3, -5, 6, 8);
+  // SMD passives scattered on board — was at (areaX=3, areaZ=-5, w=6, d=8), swap axes
+  addSMDPassives(group, 4, pcbH, -5, 3, 8, 6);
 
-  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  addLabel(group, comp.ref, pcbW / 2 + 2, 0);
   return group;
 }
 
