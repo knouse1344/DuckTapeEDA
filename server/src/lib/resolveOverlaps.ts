@@ -26,6 +26,12 @@ interface DesignToResolve {
   board: { width: number; height: number };
 }
 
+interface CompInfo {
+  comp: DesignComponent;
+  footprint: FootprintDimensions;
+  area: number;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -138,12 +144,6 @@ export function resolveOverlaps(design: DesignToResolve): boolean {
   if (valid.length === 0) return false;
 
   // 2. Build footprint info for each component
-  interface CompInfo {
-    comp: DesignComponent;
-    footprint: FootprintDimensions;
-    area: number;
-  }
-
   const infos: CompInfo[] = valid.map((comp) => {
     const fp = getFootprint(comp.package, comp.type, comp.value);
     return { comp, footprint: fp, area: fp.width * fp.height };
@@ -230,6 +230,54 @@ export function resolveOverlaps(design: DesignToResolve): boolean {
     if (adjusted.bottom + BOARD_MARGIN > design.board.height) {
       design.board.height = roundTo01(adjusted.bottom + BOARD_MARGIN);
       changed = true;
+    }
+  }
+
+  // 6. Re-check overlaps after board margin shifts
+  //    Boundary adjustments in step 5 may have pushed components into each other.
+  //    Rebuild the placed list and resolve any newly-introduced conflicts.
+  if (changed) {
+    const postPlaced: Rect[] = [];
+
+    for (const info of infos) {
+      const { comp, footprint } = info;
+      const pos = comp.pcbPosition;
+
+      const currentBounds = getComponentBounds(pos.x, pos.y, pos.rotation, footprint);
+      const paddedBounds = inflateRect(currentBounds, MIN_GAP);
+
+      let hasOverlap = false;
+      for (const rect of postPlaced) {
+        if (rectanglesOverlap(paddedBounds, rect)) {
+          hasOverlap = true;
+          break;
+        }
+      }
+
+      if (hasOverlap) {
+        const clear = findClearPosition(
+          pos.x,
+          pos.y,
+          pos.rotation,
+          footprint,
+          postPlaced,
+          Math.max(design.board.width, design.board.height),
+        );
+
+        if (clear) {
+          pos.x = clear.x;
+          pos.y = clear.y;
+        } else {
+          let maxRight = 0;
+          for (const rect of postPlaced) {
+            if (rect.right > maxRight) maxRight = rect.right;
+          }
+          pos.x = roundTo01(maxRight + MIN_GAP + (footprint.width / 2) + footprint.keepout);
+          pos.y = roundTo01(footprint.height / 2 + footprint.keepout + BOARD_MARGIN);
+        }
+      }
+
+      postPlaced.push(getComponentBounds(pos.x, pos.y, pos.rotation, footprint));
     }
   }
 
