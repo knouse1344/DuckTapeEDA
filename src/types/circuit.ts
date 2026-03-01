@@ -6,6 +6,7 @@ export interface CircuitDesign {
   board: BoardSpec;
   notes: string[];
   branding?: BrandingBlock;
+  traces?: Trace[];
 }
 
 export interface Component {
@@ -88,6 +89,26 @@ export interface PadDef {
   drill?: number;
   /** Which side: "front" = F.Cu SMD, "back" = B.Cu SMD, "through" = all copper layers */
   layer: "front" | "back" | "through";
+}
+
+/** A waypoint in a copper trace polyline */
+export interface TracePoint {
+  /** X coordinate in mm (absolute board position) */
+  x: number;
+  /** Y coordinate in mm (absolute board position) */
+  y: number;
+}
+
+/** A routed copper trace connecting two pads on the same net */
+export interface Trace {
+  /** Must match a Connection.netName */
+  netName: string;
+  /** Trace width in mm (0.25 signal, 0.5 power) */
+  width: number;
+  /** Copper layer — v1 supports front only */
+  layer: "front";
+  /** Polyline waypoints — first point at source pad, last at destination pad */
+  points: TracePoint[];
 }
 
 export interface ChatMessage {
