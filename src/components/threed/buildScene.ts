@@ -907,11 +907,12 @@ function buildArduinoNano(comp: Component): THREE.Group {
 }
 
 function buildPiPico(comp: Component): THREE.Group {
-  // Real dimensions: 21.0 x 51.0 x 1.0mm PCB (Raspberry Pi Pico)
+  // Real dimensions from footprint table — width is X (long axis), height is Z (short axis)
   // Key features: USB-C (Micro-USB on original), RP2040 QFN-56, W25Q16 flash, BOOTSEL, 2x20 headers, 3 SWD pads
   const group = new THREE.Group();
-  const pcbW = 21;
-  const pcbD = 51;
+  const fp = getFootprint(comp.package, comp.type, comp.value);
+  const pcbW = fp.width;   // long axis (X) — ~51mm
+  const pcbD = fp.height;  // short axis (Z) — ~21mm
   const pcbH = 1.6;
 
   // Green PCB board
@@ -922,61 +923,62 @@ function buildPiPico(comp: Component): THREE.Group {
   // RP2040 chip (black QFN-56 square, center of board)
   addSMDChip(group, 7, 7, 1.0, 0, 0, pcbH);
 
-  // USB-C port at one end
+  // USB-C port at -X end — depth along X, width along Z
   const usbMat = new THREE.MeshPhongMaterial({ color: USB_METAL, specular: 0xcccccc, shininess: 100 });
-  const usb = new THREE.Mesh(new THREE.BoxGeometry(9, 3.2, 7), usbMat);
-  usb.position.set(0, pcbH + 1.6, -pcbD / 2 + 3);
+  const usb = new THREE.Mesh(new THREE.BoxGeometry(7, 3.2, 9), usbMat);
+  usb.position.set(-pcbW / 2 + 3, pcbH + 1.6, 0);
   group.add(usb);
 
+  // USB port opening (dark) — faces -X direction
   const usbOpen = new THREE.Mesh(
-    new THREE.BoxGeometry(8, 2.2, 1),
+    new THREE.BoxGeometry(1, 2.2, 8),
     new THREE.MeshPhongMaterial({ color: 0x1a1a1a })
   );
-  usbOpen.position.set(0, pcbH + 1.6, -pcbD / 2 + 0.01);
+  usbOpen.position.set(-pcbW / 2 + 0.01, pcbH + 1.6, 0);
   group.add(usbOpen);
 
-  // W25Q16 flash memory chip (small black rectangle)
-  addSMDChip(group, 4, 3, 0.8, 5, 8, pcbH, false);
+  // W25Q16 flash memory chip (small black rectangle) — was at (5, 8), swap: (8, 5)
+  addSMDChip(group, 4, 3, 0.8, 8, 5, pcbH, false);
 
-  // BOOTSEL button (white tactile switch)
+  // BOOTSEL button (white tactile switch) — was at (-5, y, -10), swap: (-10, y, -5)
   const bootBtn = new THREE.Mesh(
     new THREE.CylinderGeometry(1.2, 1.2, 0.8, 12),
     new THREE.MeshPhongMaterial({ color: 0xf0f0e8, shininess: 40 })
   );
-  bootBtn.position.set(-5, pcbH + 0.4, -10);
+  bootBtn.position.set(-10, pcbH + 0.4, -5);
   group.add(bootBtn);
 
-  // Two rows of 20 pin headers along edges
+  // Two rows of 20 pin headers along long edges (now run along X)
   const pitch = 2.54;
   const pinsPerSide = 20;
-  const headerCenterZ = -pcbD / 2 + 3 + (pinsPerSide - 1) * pitch / 2;
+  const headerCenterX = -pcbW / 2 + 3 + (pinsPerSide - 1) * pitch / 2;
   for (const side of [-1, 1]) {
-    addPinHeaderRow(group, pinsPerSide, pitch, side * (pcbW / 2 - 1.5), headerCenterZ, "z", pcbH);
+    addPinHeaderRow(group, pinsPerSide, pitch, headerCenterX, side * (pcbD / 2 - 1.5), "x", pcbH);
   }
 
-  // 3 SWD debug pads at bottom of board
+  // 3 SWD debug pads at +X end of board — was at z=pcbD/2-3, swap to x=pcbW/2-3
   const swdMat = new THREE.MeshPhongMaterial({ color: HASL_COLOR, specular: HASL_SPECULAR, shininess: 80 });
   for (let i = 0; i < 3; i++) {
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 8), swdMat);
-    pad.position.set(-2.54 + i * 2.54, pcbH + 0.02, pcbD / 2 - 3);
+    pad.position.set(pcbW / 2 - 3, pcbH + 0.02, -2.54 + i * 2.54);
     group.add(pad);
   }
 
-  // On-board LED (green)
+  // On-board LED (green) — was at (3, y, 14), swap: (14, y, 3)
   const led = new THREE.Mesh(
     new THREE.BoxGeometry(1.0, 0.5, 0.6),
     new THREE.MeshPhongMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 })
   );
-  led.position.set(3, pcbH + 0.25, 14);
+  led.position.set(14, pcbH + 0.25, 3);
   group.add(led);
 
   // Silkscreen "Pico" label
   addLabel(group, "Pico", 0, -5);
 
-  // SMD passives scattered on board
-  addSMDPassives(group, 5, pcbH, -3, 5, 8, 10);
+  // SMD passives scattered on board — was at (areaX=-3, areaZ=5, w=8, d=10), swap axes
+  addSMDPassives(group, 5, pcbH, 5, -3, 10, 8);
 
-  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  addLabel(group, comp.ref, pcbW / 2 + 2, 0);
   return group;
 }
 
