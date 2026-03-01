@@ -30,6 +30,7 @@ export interface FootprintDimensions {
 
 const VALUE_FOOTPRINTS: Record<string, FootprintDimensions> = {
   // ── Displays ──
+  "lcd 1602":                                  { width: 80.0, height: 36.0, keepout: 1.5 },
   "lcd 1602 i2c":                              { width: 80.0, height: 36.0, keepout: 1.5 },
   "lcd 1602 display with i2c backpack":        { width: 80.0, height: 36.0, keepout: 1.5 },
   "ssd1306 oled":                              { width: 27.0, height: 27.0, keepout: 1.0 },
@@ -50,6 +51,7 @@ const VALUE_FOOTPRINTS: Record<string, FootprintDimensions> = {
   "esp-01 wifi module":                        { width: 25.0, height: 14.0, keepout: 1.0 },
   "hc-05":                                     { width: 27.0, height: 13.0, keepout: 1.0 },
   "hc-05 bluetooth serial module":             { width: 27.0, height: 13.0, keepout: 1.0 },
+  "nrf24l01":                                  { width: 29.0, height: 15.0, keepout: 1.0 },
   "nrf24l01+":                                 { width: 29.0, height: 15.0, keepout: 1.0 },
   "nrf24l01+ 2.4ghz wireless module":          { width: 29.0, height: 15.0, keepout: 1.0 },
 
@@ -69,17 +71,25 @@ const VALUE_FOOTPRINTS: Record<string, FootprintDimensions> = {
 
   // ── Dev boards / MCUs ──
   "arduino nano":                              { width: 43.0, height: 18.0, keepout: 1.5 },
+  "arduino nano development board":            { width: 43.0, height: 18.0, keepout: 1.5 },
   "esp32-devkit":                              { width: 52.0, height: 28.0, keepout: 1.5 },
   "esp32 devkit module":                       { width: 52.0, height: 28.0, keepout: 1.5 },
   "raspberry pi pico":                         { width: 51.0, height: 21.0, keepout: 1.5 },
   "raspberry pi pico (rp2040)":               { width: 51.0, height: 21.0, keepout: 1.5 },
   "arduino uno":                               { width: 69.0, height: 53.0, keepout: 2.0 },
+  "arduino uno r3 development board":          { width: 69.0, height: 53.0, keepout: 2.0 },
   "arduino mega":                              { width: 102.0, height: 53.0, keepout: 2.0 },
+  "arduino mega 2560 development board":       { width: 102.0, height: 53.0, keepout: 2.0 },
   "teensy 4.0":                                { width: 36.0, height: 18.0, keepout: 1.5 },
+  "teensy 4.0 development board":              { width: 36.0, height: 18.0, keepout: 1.5 },
   "adafruit feather":                          { width: 51.0, height: 23.0, keepout: 1.5 },
+  "adafruit feather development board":        { width: 51.0, height: 23.0, keepout: 1.5 },
   "seeeduino xiao":                            { width: 21.0, height: 18.0, keepout: 1.0 },
+  "seeeduino xiao development board":          { width: 21.0, height: 18.0, keepout: 1.0 },
   "wemos d1 mini":                             { width: 35.0, height: 26.0, keepout: 1.5 },
+  "wemos d1 mini esp8266 development board":   { width: 35.0, height: 26.0, keepout: 1.5 },
   "stm32 blue pill":                           { width: 53.0, height: 23.0, keepout: 1.5 },
+  "stm32 blue pill development board":         { width: 53.0, height: 23.0, keepout: 1.5 },
 };
 
 // ─── PACKAGE_FOOTPRINTS ──────────────────────────────────────
