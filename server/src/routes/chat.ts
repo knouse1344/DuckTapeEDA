@@ -214,7 +214,9 @@ router.post("/", requireAuth, async (req, res) => {
 
             // Re-validate after resolver
             const recheck = validateDesign(design);
-            if (recheck.valid || !hasNonSpatialErrors) {
+            if (recheck.valid || !recheck.errors.some(
+              (e) => e.code !== "FOOTPRINT_OVERLAP" && e.code !== "COMPONENT_OUT_OF_BOUNDS"
+            )) {
               console.log(`[chat] Design valid after overlap resolution`);
               sendSSE(res, "replace", { text });
               res.end();
