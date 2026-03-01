@@ -197,7 +197,7 @@ export function getFootprint(pkg: string, type?: string, value?: string): Footpr
 
     // Fuzzy match — check if any key is contained in the value or vice versa
     for (const [key, dims] of Object.entries(VALUE_FOOTPRINTS)) {
-      if (valueLower.includes(key) || key.includes(valueLower)) {
+      if (valueLower.includes(key) || (valueLower.length >= 5 && key.includes(valueLower))) {
         return dims;
       }
     }
