@@ -174,7 +174,7 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
   );
 
   const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
+    (e: WheelEvent) => {
       e.preventDefault();
       setZoom((prev) => {
         const factor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -183,6 +183,14 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
     },
     []
   );
+
+  // ── Wheel listener (non-passive so preventDefault works) ────
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
 
   // ── Window-level listeners for drag & pan ──────────────────
 
@@ -305,7 +313,6 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
         preserveAspectRatio="xMidYMid meet"
         style={{ cursor }}
         onMouseDown={handleSvgMouseDown}
-        onWheel={handleWheel}
       >
         {/* Board outline */}
         <rect
