@@ -732,8 +732,9 @@ function buildWS2812B(comp: Component): THREE.Group {
   const group = new THREE.Group();
 
   // 5050 package: 5mm x 5mm x 1.6mm white body
-  const bodyW = 5.0;
-  const bodyD = 5.0;
+  const fp = getFootprint(comp.package, comp.type, comp.value);
+  const bodyW = fp.width;   // 5.0mm
+  const bodyD = fp.height;  // 5.0mm
   const bodyH = 1.6;
 
   // White ceramic/plastic body — beveled
@@ -990,8 +991,9 @@ function buildOLEDModule(comp: Component): THREE.Group {
   // To reposition a makeBeveledBox result, wrap it in a THREE.Group and
   // move the group — do NOT override mesh.position.set() directly.
   const group = new THREE.Group();
-  const pcbW = 27;
-  const pcbD = 27;
+  const fp = getFootprint(comp.package, comp.type, comp.value);
+  const pcbW = fp.width;   // 27mm
+  const pcbD = fp.height;  // 27mm
   const pcbH = 1.2;
   const bezelH = 1.8;
 
