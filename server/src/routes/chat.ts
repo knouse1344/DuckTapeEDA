@@ -194,11 +194,9 @@ router.post("/", requireAuth, async (req, res) => {
         const feedback = formatValidationFeedback(validation);
 
         // Check if errors are spatial (overlaps / out-of-bounds)
+        const SPATIAL_CODES = new Set(["FOOTPRINT_OVERLAP", "COMP_OFF_BOARD", "FOOTPRINT_OFF_BOARD"]);
         const hasOverlapErrors = validation.errors.some(
-          (e) => e.code === "FOOTPRINT_OVERLAP" || e.code === "COMPONENT_OUT_OF_BOUNDS"
-        );
-        const hasNonSpatialErrors = validation.errors.some(
-          (e) => e.code !== "FOOTPRINT_OVERLAP" && e.code !== "COMPONENT_OUT_OF_BOUNDS"
+          (e) => SPATIAL_CODES.has(e.code)
         );
 
         // Fix overlaps algorithmically — don't waste API calls on spatial math
@@ -215,7 +213,7 @@ router.post("/", requireAuth, async (req, res) => {
             // Re-validate after resolver
             const recheck = validateDesign(design);
             if (recheck.valid || !recheck.errors.some(
-              (e) => e.code !== "FOOTPRINT_OVERLAP" && e.code !== "COMPONENT_OUT_OF_BOUNDS"
+              (e) => !SPATIAL_CODES.has(e.code)
             )) {
               console.log(`[chat] Design valid after overlap resolution`);
               sendSSE(res, "replace", { text });

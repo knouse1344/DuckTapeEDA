@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense } from "react";
+import { useState, useRef, useCallback, lazy, Suspense } from "react";
 import type { ChatMessage, CircuitDesign } from "./types/circuit";
 import { sendMessageStreaming } from "./services/claude";
 import {
@@ -40,6 +40,22 @@ export default function App() {
 
   // Component gallery toggle
   const [showGallery, setShowGallery] = useState(false);
+
+  // Debounced auto-save for PCB position changes
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const debouncedSave = useCallback((design: CircuitDesign) => {
+    if (!token || !currentDesignId) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await updateDesign(token, currentDesignId, design, messages);
+        setDrawerRefreshKey((k) => k + 1);
+      } catch {
+        console.error("Auto-save after position change failed");
+      }
+    }, 1000);
+  }, [token, currentDesignId, messages]);
 
   // Show loading while checking auth
   if (authLoading) {
@@ -192,12 +208,14 @@ export default function App() {
   const handleUpdatePosition = (ref: string, x: number, y: number, rotation: number) => {
     setCurrentDesign(prev => {
       if (!prev) return prev;
-      return {
+      const updated = {
         ...prev,
         components: prev.components.map(c =>
           c.ref === ref ? { ...c, pcbPosition: { x, y, rotation } } : c
         ),
       };
+      debouncedSave(updated);
+      return updated;
     });
   };
 
