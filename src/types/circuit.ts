@@ -70,6 +70,26 @@ export interface BrandingBlock {
   version: string;
 }
 
+/** Physical pad definition for a component package */
+export interface PadDef {
+  /** Matches pin id from component ("1", "2", "anode", "VBUS", etc.) */
+  id: string;
+  /** X offset in mm relative to component center */
+  x: number;
+  /** Y offset in mm relative to component center */
+  y: number;
+  /** Pad shape */
+  shape: "circle" | "rect" | "oval";
+  /** Pad width in mm */
+  width: number;
+  /** Pad height in mm */
+  height: number;
+  /** Through-hole drill diameter in mm (omit for SMD pads) */
+  drill?: number;
+  /** Which side: "front" = F.Cu SMD, "back" = B.Cu SMD, "through" = all copper layers */
+  layer: "front" | "back" | "through";
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
