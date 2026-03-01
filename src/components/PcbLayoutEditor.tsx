@@ -206,7 +206,7 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
       }
     };
 
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = (_e: MouseEvent) => {
       if (dragging && dragPos) {
         const comp = components.find((c) => c.ref === dragging.ref);
         if (comp) {
