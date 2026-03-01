@@ -1,9 +1,12 @@
 import type { CircuitDesign } from "../types/circuit";
 import type { CheckFinding } from "../services/designCheck";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import ThreeDRenderer from "./threed/ThreeDRenderer";
 import DesignCheckPanel from "./DesignCheckPanel";
 import PcbLayoutEditor from "./PcbLayoutEditor";
+import { generateBomCsv, downloadFile } from "../lib/exportBom";
+import { generateCplCsv } from "../lib/exportCpl";
+import { generateKicadPcb } from "../lib/exportKicad";
 
 interface Props {
   design: CircuitDesign | null;
@@ -27,6 +30,42 @@ export default function DesignViewer({
   onUpdatePosition,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("pcb");
+  const [showBomMenu, setShowBomMenu] = useState(false);
+  const bomMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showBomMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (bomMenuRef.current && !bomMenuRef.current.contains(e.target as Node)) {
+        setShowBomMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showBomMenu]);
+
+  const handleExportKicad = () => {
+    if (!design) return;
+    const pcbContent = generateKicadPcb(design);
+    const filename = `${design.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "board"}.kicad_pcb`;
+    downloadFile(pcbContent, filename, "application/octet-stream");
+  };
+
+  const handleExportBom = () => {
+    if (!design) return;
+    const csvContent = generateBomCsv(design);
+    const filename = `${design.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "board"}_BOM.csv`;
+    downloadFile(csvContent, filename, "text/csv");
+    setShowBomMenu(false);
+  };
+
+  const handleExportCpl = () => {
+    if (!design) return;
+    const csvContent = generateCplCsv(design);
+    const filename = `${design.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "board"}_CPL.csv`;
+    downloadFile(csvContent, filename, "text/csv");
+    setShowBomMenu(false);
+  };
 
   const showCheckPanel = checking || checkFindings.length > 0 || checkAiText.length > 0;
 
@@ -75,17 +114,35 @@ export default function DesignViewer({
               {checking ? "Checking..." : "Check Design"}
             </button>
             <button
-              disabled
-              className="text-xs px-3 py-1.5 border border-gray-300 rounded text-gray-400 cursor-not-allowed"
+              onClick={handleExportKicad}
+              className="text-xs px-3 py-1.5 border border-gray-300 rounded text-gray-600 hover:bg-gray-50 transition-colors"
             >
               Download KiCad
             </button>
-            <button
-              disabled
-              className="text-xs px-3 py-1.5 border border-gray-300 rounded text-gray-400 cursor-not-allowed"
-            >
-              BOM
-            </button>
+            <div className="relative" ref={bomMenuRef}>
+              <button
+                onClick={() => setShowBomMenu(!showBomMenu)}
+                className="text-xs px-3 py-1.5 border border-gray-300 rounded text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Export &#9662;
+              </button>
+              {showBomMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[140px]">
+                  <button
+                    onClick={handleExportBom}
+                    className="block w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700"
+                  >
+                    BOM CSV
+                  </button>
+                  <button
+                    onClick={handleExportCpl}
+                    className="block w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700"
+                  >
+                    Pick &amp; Place CSV
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
