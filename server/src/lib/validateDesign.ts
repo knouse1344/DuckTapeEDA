@@ -42,6 +42,18 @@ interface DesignBranding {
   version: string;
 }
 
+interface DesignTracePoint {
+  x: number;
+  y: number;
+}
+
+interface DesignTrace {
+  netName: string;
+  width: number;
+  layer: string;
+  points: DesignTracePoint[];
+}
+
 interface CircuitDesign {
   name: string;
   description: string;
@@ -50,6 +62,7 @@ interface CircuitDesign {
   board: DesignBoard;
   notes: string[];
   branding?: DesignBranding;
+  traces?: DesignTrace[];
 }
 
 export interface ValidationIssue {
@@ -70,6 +83,29 @@ const VALID_TYPES = [
   "resistor", "capacitor", "led", "diode", "connector",
   "ic", "mosfet", "switch", "regulator",
 ];
+
+function segmentToSegmentDistance(
+  x1: number, y1: number, x2: number, y2: number,
+  x3: number, y3: number, x4: number, y4: number
+): number {
+  function pointToSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2);
+    let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    return Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+  }
+  return Math.min(
+    pointToSegDist(x1, y1, x3, y3, x4, y4),
+    pointToSegDist(x2, y2, x3, y3, x4, y4),
+    pointToSegDist(x3, y3, x1, y1, x2, y2),
+    pointToSegDist(x4, y4, x1, y1, x2, y2),
+  );
+}
 
 /**
  * Validate a parsed CircuitDesign object.
@@ -499,6 +535,12 @@ export function validateDesign(design: unknown): ValidationResult {
     }
   }
 
+  // ─── ROUTE VALIDATION ─────────────────────────────────────
+  if (Array.isArray((d as Record<string, unknown>).traces)) {
+    const routeIssues = validateRoutes(design);
+    issues.push(...routeIssues);
+  }
+
   return toResult(issues);
 }
 
@@ -648,4 +690,135 @@ export function checkBoardCapacity(design: { components: { type: string; package
   }
 
   return null;
+}
+
+/**
+ * Validate trace routes for structural correctness, board bounds,
+ * trace-to-trace clearance, and net connectivity.
+ */
+function validateRoutes(design: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const d = design as Record<string, unknown>;
+
+  const traces = d.traces as DesignTrace[] | undefined;
+  if (!Array.isArray(traces) || traces.length === 0) return issues;
+
+  const connections = d.connections as DesignConnection[] | undefined;
+  const board = d.board as DesignBoard | undefined;
+
+  // Build set of valid net names from connections
+  const validNets = new Set<string>();
+  if (Array.isArray(connections)) {
+    for (const conn of connections) {
+      if (conn.netName) validNets.add(conn.netName);
+    }
+  }
+
+  // ─── STRUCTURE CHECKS ─────────────────────────────────
+  for (let i = 0; i < traces.length; i++) {
+    const trace = traces[i];
+    const label = `traces[${i}] (net "${trace.netName || "?"}")`;
+
+    // Valid netName
+    if (!trace.netName || typeof trace.netName !== "string") {
+      issues.push({ severity: "error", code: "TRACE_NO_NET", message: `${label} has no netName` });
+    } else if (validNets.size > 0 && !validNets.has(trace.netName)) {
+      issues.push({ severity: "error", code: "TRACE_BAD_NET", message: `${label} references unknown net "${trace.netName}" — it must match a connection's netName` });
+    }
+
+    // Minimum 2 points
+    if (!Array.isArray(trace.points) || trace.points.length < 2) {
+      issues.push({ severity: "error", code: "TRACE_TOO_SHORT", message: `${label} has fewer than 2 points` });
+      continue; // skip further checks on this trace
+    }
+
+    // Width check
+    if (typeof trace.width !== "number" || trace.width < 0.15) {
+      issues.push({ severity: "error", code: "TRACE_BAD_WIDTH", message: `${label} has invalid width ${trace.width}mm (minimum 0.15mm)` });
+    }
+
+    // Valid coordinates
+    for (let p = 0; p < trace.points.length; p++) {
+      const pt = trace.points[p];
+      if (typeof pt.x !== "number" || typeof pt.y !== "number" || !isFinite(pt.x) || !isFinite(pt.y)) {
+        issues.push({ severity: "error", code: "TRACE_BAD_COORD", message: `${label} point[${p}] has invalid coordinates` });
+      }
+    }
+
+    // ─── BOARD BOUNDS CHECK ───────────────────────────────
+    if (board && board.width > 0 && board.height > 0) {
+      for (let p = 0; p < trace.points.length; p++) {
+        const pt = trace.points[p];
+        if (typeof pt.x !== "number" || typeof pt.y !== "number") continue;
+        if (pt.x < 0 || pt.x > board.width || pt.y < 0 || pt.y > board.height) {
+          issues.push({
+            severity: "error",
+            code: "TRACE_OFF_BOARD",
+            message: `${label} point[${p}] (${pt.x}, ${pt.y}) is outside board bounds (0,0)-(${board.width}, ${board.height})`,
+          });
+        }
+      }
+    }
+  }
+
+  // ─── TRACE-TO-TRACE CLEARANCE ─────────────────────────
+  const MIN_TRACE_CLEARANCE = 0.2; // mm
+  for (let i = 0; i < traces.length; i++) {
+    for (let j = i + 1; j < traces.length; j++) {
+      const tA = traces[i];
+      const tB = traces[j];
+      // Only check clearance between different nets
+      if (tA.netName === tB.netName) continue;
+      if (!Array.isArray(tA.points) || tA.points.length < 2) continue;
+      if (!Array.isArray(tB.points) || tB.points.length < 2) continue;
+
+      const halfWidthA = (tA.width || 0.25) / 2;
+      const halfWidthB = (tB.width || 0.25) / 2;
+      const requiredDist = MIN_TRACE_CLEARANCE + halfWidthA + halfWidthB;
+
+      for (let sA = 0; sA < tA.points.length - 1; sA++) {
+        for (let sB = 0; sB < tB.points.length - 1; sB++) {
+          const pA1 = tA.points[sA], pA2 = tA.points[sA + 1];
+          const pB1 = tB.points[sB], pB2 = tB.points[sB + 1];
+          if (typeof pA1.x !== "number" || typeof pA2.x !== "number" ||
+              typeof pB1.x !== "number" || typeof pB2.x !== "number") continue;
+
+          const dist = segmentToSegmentDistance(
+            pA1.x, pA1.y, pA2.x, pA2.y,
+            pB1.x, pB1.y, pB2.x, pB2.y,
+          );
+          if (dist < requiredDist) {
+            issues.push({
+              severity: "error",
+              code: "TRACE_CLEARANCE",
+              message: `Trace on net "${tA.netName}" and trace on net "${tB.netName}" are too close (${dist.toFixed(2)}mm apart, need ${requiredDist.toFixed(2)}mm including trace widths)`,
+            });
+            // Only report once per trace pair
+            sA = tA.points.length;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // ─── CONNECTIVITY CHECK ───────────────────────────────
+  // Every connection should have at least one trace (warning if missing)
+  if (Array.isArray(connections)) {
+    const tracedNets = new Set<string>();
+    for (const trace of traces) {
+      if (trace.netName) tracedNets.add(trace.netName);
+    }
+    for (const conn of connections) {
+      if (conn.netName && !tracedNets.has(conn.netName)) {
+        issues.push({
+          severity: "warning",
+          code: "NET_UNROUTED",
+          message: `Net "${conn.netName}" has no traces — it is unrouted`,
+        });
+      }
+    }
+  }
+
+  return issues;
 }
