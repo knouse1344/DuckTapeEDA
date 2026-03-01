@@ -189,6 +189,18 @@ export default function App() {
     setCurrentDesignId(null);
   };
 
+  const handleUpdatePosition = (ref: string, x: number, y: number, rotation: number) => {
+    setCurrentDesign(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        components: prev.components.map(c =>
+          c.ref === ref ? { ...c, pcbPosition: { x, y, rotation } } : c
+        ),
+      };
+    });
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -255,6 +267,7 @@ export default function App() {
             checkFindings={checkFindings}
             checkAiText={checkAiText}
             onCloseCheck={clearCheckResults}
+            onUpdatePosition={handleUpdatePosition}
           />
         </div>
       </div>
