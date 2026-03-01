@@ -70,8 +70,8 @@ const VALUE_FOOTPRINTS: Record<string, FootprintDimensions> = {
   "max9814 microphone amplifier module":       { width: 23.0, height: 16.0, keepout: 1.0 },
 
   // ── Dev boards / MCUs ──
-  "arduino nano":                              { width: 43.0, height: 18.0, keepout: 1.5 },
-  "arduino nano development board":            { width: 43.0, height: 18.0, keepout: 1.5 },
+  "arduino nano":                              { width: 45.0, height: 18.0, keepout: 1.5 },
+  "arduino nano development board":            { width: 45.0, height: 18.0, keepout: 1.5 },
   "esp32-devkit":                              { width: 52.0, height: 28.0, keepout: 1.5 },
   "esp32 devkit module":                       { width: 52.0, height: 28.0, keepout: 1.5 },
   "raspberry pi pico":                         { width: 51.0, height: 21.0, keepout: 1.5 },
@@ -143,7 +143,7 @@ const PACKAGE_FOOTPRINTS: Record<string, FootprintDimensions> = {
   // Modules (breakout boards)
   "Module_DIP":              { width: 52.0, height: 28.0, keepout: 1.5 },
   "Module_DIP_40pin":        { width: 51.0, height: 21.0, keepout: 1.5 },
-  "Module_DIP_30pin":        { width: 43.0, height: 18.0, keepout: 1.5 },
+  "Module_DIP_30pin":        { width: 45.0, height: 18.0, keepout: 1.5 },
   "Module_4pin":             { width: 13.0, height: 10.0, keepout: 1.0 },
   "Module_3pin":             { width: 32.0, height: 24.0, keepout: 1.5 },
   "Module_6pin":             { width: 27.0, height: 13.0, keepout: 1.0 },

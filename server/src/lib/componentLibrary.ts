@@ -1074,7 +1074,7 @@ const moreMcus: LibraryComponent[] = [
     ],
     specs: { processor: "ATmega328P @ 16MHz", flash: "32KB", sram: "2KB", gpio: "22", supplyVoltage: "5V USB or 7-12V VIN" },
     tags: ["ic", "microcontroller", "arduino", "nano", "avr", "module", "breadboard"],
-    footprint: { width: 43.0, height: 18.0, keepout: 1.5 },
+    footprint: { width: 45.0, height: 18.0, keepout: 1.5 },
   },
 ];
 
