@@ -797,7 +797,7 @@ function buildArduinoNano(comp: Component): THREE.Group {
   // Key features: Mini-USB, ATmega328P TQFP-32, CH340G, 2x15 pin headers, ICSP
   const group = new THREE.Group();
   const fp = getFootprint(comp.package, comp.type, comp.value);
-  const pcbW = fp.width;   // long axis (X) — ~43mm
+  const pcbW = fp.width;   // long axis (X) — ~45mm
   const pcbD = fp.height;  // short axis (Z) — ~18mm
   const pcbH = 1.6;
 
@@ -939,7 +939,7 @@ function buildPiPico(comp: Component): THREE.Group {
   group.add(usbOpen);
 
   // W25Q16 flash memory chip (small black rectangle) — was at (5, 8), swap: (8, 5)
-  addSMDChip(group, 4, 3, 0.8, 8, 5, pcbH, false);
+  addSMDChip(group, 3, 4, 0.8, 8, 5, pcbH, false);
 
   // BOOTSEL button (white tactile switch) — was at (-5, y, -10), swap: (-10, y, -5)
   const bootBtn = new THREE.Mesh(
