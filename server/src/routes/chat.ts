@@ -5,6 +5,7 @@ import { getApiKey } from "../db.js";
 import { decryptApiKey } from "../crypto.js";
 import { buildSystemPrompt } from "../lib/buildPrompt.js";
 import { validateDesign, formatValidationFeedback, generateSpatialMap, checkBoardCapacity } from "../lib/validateDesign.js";
+import { resolveOverlaps } from "../lib/resolveOverlaps.js";
 
 const router = Router();
 
@@ -191,6 +192,37 @@ router.post("/", requireAuth, async (req, res) => {
 
       if (!validation.valid && validation.errors.length > 0) {
         const feedback = formatValidationFeedback(validation);
+
+        // Check if errors are spatial (overlaps / out-of-bounds)
+        const hasOverlapErrors = validation.errors.some(
+          (e) => e.code === "FOOTPRINT_OVERLAP" || e.code === "COMPONENT_OUT_OF_BOUNDS"
+        );
+        const hasNonSpatialErrors = validation.errors.some(
+          (e) => e.code !== "FOOTPRINT_OVERLAP" && e.code !== "COMPONENT_OUT_OF_BOUNDS"
+        );
+
+        // Fix overlaps algorithmically — don't waste API calls on spatial math
+        if (hasOverlapErrors && design) {
+          const resolved = resolveOverlaps(design as Parameters<typeof resolveOverlaps>[0]);
+          if (resolved) {
+            console.log(`[chat] Overlap resolver fixed component positions`);
+            // Re-serialize the fixed design back into the response text
+            text = text.replace(
+              /```json\s*[\s\S]*?```/,
+              "```json\n" + JSON.stringify(design, null, 2) + "\n```"
+            );
+
+            // Re-validate after resolver
+            const recheck = validateDesign(design);
+            if (recheck.valid || !hasNonSpatialErrors) {
+              console.log(`[chat] Design valid after overlap resolution`);
+              sendSSE(res, "replace", { text });
+              res.end();
+              return;
+            }
+            // If there are still non-spatial errors, fall through to retry loop
+          }
+        }
 
         console.log(`[chat] Design validation failed (${validation.errors.length} errors, ${validation.warnings.length} warnings). Retrying...`);
 
