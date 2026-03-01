@@ -244,6 +244,30 @@ function renderBranding(design: CircuitDesign): string {
   return lines.join("\n");
 }
 
+/** Generate KiCad segment entries from trace polylines */
+function renderTraces(design: CircuitDesign, netNames: string[]): string {
+  if (!design.traces || design.traces.length === 0) return "";
+
+  const netToOrdinal = new Map<string, number>();
+  for (let i = 0; i < netNames.length; i++) {
+    netToOrdinal.set(netNames[i], i);
+  }
+
+  const segments: string[] = [];
+  for (const trace of design.traces) {
+    const netOrd = netToOrdinal.get(trace.netName) ?? 0;
+    const layer = trace.layer === "front" ? "F.Cu" : "B.Cu";
+
+    for (let i = 0; i < trace.points.length - 1; i++) {
+      const p1 = trace.points[i];
+      const p2 = trace.points[i + 1];
+      segments.push(`  (segment (start ${n(p1.x)} ${n(p1.y)}) (end ${n(p2.x)} ${n(p2.y)}) (width ${n(trace.width)}) (layer "${layer}") (net ${netOrd}) (uuid "${uuid()}"))`);
+    }
+  }
+
+  return segments.join("\n");
+}
+
 /**
  * Generate a complete KiCad 8 .kicad_pcb file from a CircuitDesign.
  */
@@ -262,6 +286,8 @@ export function generateKicadPcb(design: CircuitDesign): string {
   const outline = renderBoardOutline(design);
 
   const branding = renderBranding(design);
+
+  const traceSegments = renderTraces(design, netNames);
 
   const titleText = design.name
     ? `  (gr_text "${esc(design.name)}"
@@ -293,6 +319,8 @@ ${titleText}
 ${branding}
 
 ${footprints}
+
+${traceSegments}
 )
 `;
 }
