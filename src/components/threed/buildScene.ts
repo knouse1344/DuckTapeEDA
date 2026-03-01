@@ -1099,11 +1099,12 @@ function buildOLEDModule(comp: Component): THREE.Group {
 }
 
 function buildLCDModule(comp: Component): THREE.Group {
-  // Real dimensions: ~36 x 80mm PCB, 16x2 character LCD with I2C backpack
+  // Real dimensions from footprint table — width is X (long axis), height is Z (short axis)
   // Key features: green PCB, metal frame, dark green display, I2C backpack with PCF8574
   const group = new THREE.Group();
-  const pcbW = 36;
-  const pcbD = 80;
+  const fp = getFootprint(comp.package, comp.type, comp.value);
+  const pcbW = fp.width;   // long axis (X) — ~80mm
+  const pcbD = fp.height;  // short axis (Z) — ~36mm
   const pcbH = 1.6;
   const frameH = 4.5;
 
@@ -1114,10 +1115,10 @@ function buildLCDModule(comp: Component): THREE.Group {
 
   // LCD metal frame/bezel — wrap in Group to preserve makeBeveledBox centering
   const frameMat = new THREE.MeshPhongMaterial({ color: 0x888888, specular: 0xaaaaaa, shininess: 60 });
-  const frameMesh = makeBeveledBox(33, frameH, 60, 0.3, frameMat);
+  const frameMesh = makeBeveledBox(60, frameH, 33, 0.3, frameMat);
   const frameGroup = new THREE.Group();
   frameGroup.add(frameMesh);
-  frameGroup.position.set(0, pcbH, -5);
+  frameGroup.position.set(-5, pcbH, 0);
   group.add(frameGroup);
 
   // Display window — sits on top of the frame surface (offset +0.02 to avoid z-fighting)
@@ -1130,10 +1131,10 @@ function buildLCDModule(comp: Component): THREE.Group {
     shininess: 80,
   });
   const display = new THREE.Mesh(
-    new THREE.BoxGeometry(28, displayH, 14),
+    new THREE.BoxGeometry(14, displayH, 28),
     displayMat
   );
-  display.position.set(0, pcbH + frameH + displayH / 2 + 0.02, -5);
+  display.position.set(-5, pcbH + frameH + displayH / 2 + 0.02, 0);
   group.add(display);
 
   // Faint 16x2 character grid on the display surface
@@ -1141,16 +1142,16 @@ function buildLCDModule(comp: Component): THREE.Group {
   const gridMat = new THREE.MeshBasicMaterial({ color: 0x0f3f0f, transparent: true, opacity: 0.4 });
   const charW = 1.5;
   const charD = 2.8;
-  const gridStartX = -12.5;
-  const gridStartZ = -5 - 3.5;
+  const gridStartX = -5 - 3.5;
+  const gridStartZ = -12.5;
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 16; col++) {
-      const cell = new THREE.Mesh(new THREE.PlaneGeometry(charW, charD), gridMat);
+      const cell = new THREE.Mesh(new THREE.PlaneGeometry(charD, charW), gridMat);
       cell.rotation.x = -Math.PI / 2;
       cell.position.set(
-        gridStartX + col * 1.7,
+        gridStartX + row * 3.5,
         displayTopY + 0.01,
-        gridStartZ + row * 3.5
+        gridStartZ + col * 1.7
       );
       group.add(cell);
     }
@@ -1165,21 +1166,21 @@ function buildLCDModule(comp: Component): THREE.Group {
     { x: pcbW / 2 - holeInset, z: pcbD / 2 - holeInset },
   ], 3.0);
 
-  // I2C backpack: 4-pin header along one edge
-  addPinHeaderRow(group, 4, 2.54, 0, pcbD / 2 - 2, "x", pcbH);
+  // I2C backpack: 4-pin header along one edge (at +X end of long axis)
+  addPinHeaderRow(group, 4, 2.54, pcbW / 2 - 2, 0, "z", pcbH);
 
   // PCF8574 I2C expander chip on the backpack area
-  addSMDChip(group, 5, 4, 0.8, -6, pcbD / 2 - 6, pcbH);
+  addSMDChip(group, 4, 5, 0.8, pcbW / 2 - 6, -6, pcbH);
 
   // Contrast potentiometer (small blue square)
   const pot = new THREE.Mesh(
     new THREE.BoxGeometry(3, 2, 3),
     new THREE.MeshPhongMaterial({ color: 0x2244aa })
   );
-  pot.position.set(10, pcbH + 1.0, pcbD / 2 - 6);
+  pot.position.set(pcbW / 2 - 6, pcbH + 1.0, 10);
   group.add(pot);
 
-  addLabel(group, comp.ref, 0, pcbD / 2 + 2);
+  addLabel(group, comp.ref, pcbW / 2 + 2, 0);
   return group;
 }
 
