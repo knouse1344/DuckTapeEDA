@@ -11,6 +11,11 @@ function n(value: number): string {
   return value.toFixed(4);
 }
 
+/** Escape a string for KiCad S-expression (backslash-escape double quotes) */
+function esc(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 // ── KiCad 8 layer definitions for 2-layer board ──
 
 const LAYERS_BLOCK = `  (layers
@@ -119,7 +124,7 @@ function renderPad(
 ): string {
   const drillStr = pad.drill ? `\n      (drill ${n(pad.drill)})` : "";
   const netStr = netOrdinal > 0
-    ? `\n      (net ${netOrdinal} "${netName}")`
+    ? `\n      (net ${netOrdinal} "${esc(netName)}")`
     : "";
 
   return `    (pad "${pad.id}" ${padType(pad)} ${pad.shape}
@@ -148,18 +153,18 @@ function renderFootprint(
     return renderPad(pad, netOrd, netName);
   }).join("\n");
 
-  return `  (footprint "DuckTapeEDA:${comp.package}"
+  return `  (footprint "DuckTapeEDA:${esc(comp.package)}"
     (layer "F.Cu")
     (uuid "${uuid()}")
     (at ${x} ${y}${rot})
 
-    (fp_text reference "${comp.ref}"
+    (fp_text reference "${esc(comp.ref)}"
       (at 0 -3)
       (layer "F.SilkS")
       (uuid "${uuid()}")
       (effects (font (size 1 1) (thickness 0.15)))
     )
-    (fp_text value "${comp.value}"
+    (fp_text value "${esc(comp.value)}"
       (at 0 3)
       (layer "F.Fab")
       (uuid "${uuid()}")
@@ -222,14 +227,14 @@ function renderBranding(design: CircuitDesign): string {
   const smallFontSize = 1.0 * b.scale;
   const lines: string[] = [];
 
-  lines.push(`  (gr_text "${b.name}"
+  lines.push(`  (gr_text "${esc(b.name)}"
     (at ${n(b.position.x)} ${n(b.position.y)})
     (layer "${layer}")
     (uuid "${uuid()}")
     (effects (font (size ${n(fontSize)} ${n(fontSize)}) (thickness ${n(0.2 * b.scale)})) (justify left${mirror}))
   )`);
 
-  lines.push(`  (gr_text "${b.version}"
+  lines.push(`  (gr_text "${esc(b.version)}"
     (at ${n(b.position.x)} ${n(b.position.y + fontSize * 1.5)})
     (layer "${layer}")
     (uuid "${uuid()}")
@@ -246,7 +251,7 @@ export function generateKicadPcb(design: CircuitDesign): string {
   const { netNames, pinToNet } = buildNetMap(design);
 
   const netDecls = netNames.map((name, i) =>
-    `  (net ${i} "${name}")`
+    `  (net ${i} "${esc(name)}")`
   ).join("\n");
 
   const footprints = design.components.map((comp) => {
@@ -259,7 +264,7 @@ export function generateKicadPcb(design: CircuitDesign): string {
   const branding = renderBranding(design);
 
   const titleText = design.name
-    ? `  (gr_text "${design.name}"
+    ? `  (gr_text "${esc(design.name)}"
     (at ${n(design.board.width / 2)} ${n(-2)})
     (layer "F.SilkS")
     (uuid "${uuid()}")

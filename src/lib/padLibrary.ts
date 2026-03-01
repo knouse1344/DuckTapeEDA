@@ -212,6 +212,7 @@ const PACKAGE_PADS: Record<string, PadDef[]> = {
     { id: "1", x: -2.3, y: 3.15, shape: "rect", width: 0.95, height: 1.5, layer: "front" },
     { id: "2", x: 0,    y: 3.15, shape: "rect", width: 0.95, height: 1.5, layer: "front" },
     { id: "3", x: 2.3,  y: 3.15, shape: "rect", width: 0.95, height: 1.5, layer: "front" },
+    { id: "4", x: 0,    y: -3.15, shape: "rect", width: 3.0, height: 1.5, layer: "front" },
   ],
 
   "SOT-23": [
