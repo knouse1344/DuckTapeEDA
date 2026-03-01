@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { CircuitDesign, Component, BrandingBlock } from "../../types/circuit";
 import owlLogoUrl from "../../assets/owl-logo.png";
+import { getFootprint } from "../../lib/footprintLookup";
 
 // Board color palette
 const BOARD_COLORS: Record<string, number> = {
@@ -1333,14 +1334,13 @@ function buildBuzzer(comp: Component): THREE.Group {
 }
 
 function buildGenericModule(comp: Component): THREE.Group {
-  // Generic breakout board fallback — sizes to pin count, navy blue PCB
+  // Generic breakout board fallback — sizes from footprint table
   const group = new THREE.Group();
+  const fp = getFootprint(comp.package, comp.type, comp.value);
   const pinCount = comp.pins?.length || 4;
-
-  // Size PCB based on pin count
   const pitch = 2.54;
-  const pcbW = Math.max(12, pinCount <= 8 ? 15 : 20);
-  const pcbD = Math.max(12, pinCount * pitch * 0.6);
+  const pcbW = fp.width;
+  const pcbD = fp.height;
   const pcbH = 1.2;
 
   // Navy blue PCB (typical breakout board color)
@@ -1387,10 +1387,11 @@ function buildGenericIC(comp: Component): THREE.Group {
     return buildGenericModule(comp);
   }
 
-  // Fallback: beveled generic IC box
+  // Fallback: beveled generic IC box — sized from footprint table
+  const fp = getFootprint(comp.package, comp.type, comp.value);
   const group = new THREE.Group();
   const bodyMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, specular: 0x222222, shininess: 20 });
-  const body = makeBeveledBox(5, 1.5, 5, 0.12, bodyMat);
+  const body = makeBeveledBox(fp.width, 1.5, fp.height, 0.12, bodyMat);
   group.add(body);
 
   // Pin 1 dot
@@ -1399,10 +1400,10 @@ function buildGenericIC(comp: Component): THREE.Group {
     new THREE.MeshBasicMaterial({ color: SILKSCREEN })
   );
   dot.rotation.x = -Math.PI / 2;
-  dot.position.set(-1.8, 1.51, -1.8);
+  dot.position.set(-fp.width / 2 + 0.7, 1.51, -fp.height / 2 + 0.7);
   group.add(dot);
 
-  addLabel(group, comp.ref, 0, 4);
+  addLabel(group, comp.ref, 0, fp.height / 2 + 2);
   return group;
 }
 
