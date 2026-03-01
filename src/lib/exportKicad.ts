@@ -255,7 +255,8 @@ function renderTraces(design: CircuitDesign, netNames: string[]): string {
 
   const segments: string[] = [];
   for (const trace of design.traces) {
-    const netOrd = netToOrdinal.get(trace.netName) ?? 0;
+    const netOrd = netToOrdinal.get(trace.netName);
+    if (netOrd === undefined) continue;  // skip traces with unknown nets
     const layer = trace.layer === "front" ? "F.Cu" : "B.Cu";
 
     for (let i = 0; i < trace.points.length - 1; i++) {

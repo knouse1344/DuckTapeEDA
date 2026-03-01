@@ -321,7 +321,7 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
         />
 
         {/* Routed traces */}
-        {(design.traces || []).map((trace, i) => {
+        {(design.traces || []).filter((t) => t.points && t.points.length >= 2).map((trace, i) => {
           const netIdx = design.connections.findIndex((c) => c.netName === trace.netName);
           const color = NET_COLORS[(netIdx >= 0 ? netIdx : i) % NET_COLORS.length];
           const pointsStr = trace.points.map((p) => `${p.x},${p.y}`).join(" ");

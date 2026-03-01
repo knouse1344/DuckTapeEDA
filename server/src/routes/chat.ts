@@ -243,11 +243,13 @@ router.post("/", requireAuth, async (req, res) => {
           }
 
           let padContext = "";
+          let padPositionTableStr = "";
           if (design) {
             const designObj = design as { components: { ref: string; package: string; pins: { id: string; name: string; type: string }[]; pcbPosition: { x: number; y: number; rotation: number } }[] };
             if (designObj.components) {
               const padPositions = computePadPositions(designObj.components);
-              padContext = "\n\n" + formatPadPositionTable(padPositions);
+              padPositionTableStr = formatPadPositionTable(padPositions);
+              padContext = "\n\n" + padPositionTableStr;
             }
           }
 
@@ -260,7 +262,8 @@ router.post("/", requireAuth, async (req, res) => {
             },
           ];
 
-          const data = await callClaude(apiKey, systemPrompt, correctionMessages);
+          const retryPrompt = padPositionTableStr ? buildSystemPrompt(padPositionTableStr) : systemPrompt;
+          const data = await callClaude(apiKey, retryPrompt, correctionMessages);
           text = getResponseText(data);
           design = extractJsonBlock(text);
 
