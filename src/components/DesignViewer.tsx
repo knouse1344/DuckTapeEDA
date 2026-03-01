@@ -3,6 +3,7 @@ import type { CheckFinding } from "../services/designCheck";
 import { useState } from "react";
 import ThreeDRenderer from "./threed/ThreeDRenderer";
 import DesignCheckPanel from "./DesignCheckPanel";
+import PcbLayoutEditor from "./PcbLayoutEditor";
 
 interface Props {
   design: CircuitDesign | null;
@@ -11,6 +12,7 @@ interface Props {
   checkFindings?: CheckFinding[];
   checkAiText?: string;
   onCloseCheck?: () => void;
+  onUpdatePosition?: (ref: string, x: number, y: number, rotation: number) => void;
 }
 
 type Tab = "schematic" | "pcb" | "3d";
@@ -22,8 +24,9 @@ export default function DesignViewer({
   checkFindings = [],
   checkAiText = "",
   onCloseCheck,
+  onUpdatePosition,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>("3d");
+  const [activeTab, setActiveTab] = useState<Tab>("pcb");
 
   const showCheckPanel = checking || checkFindings.length > 0 || checkAiText.length > 0;
 
@@ -108,6 +111,11 @@ export default function DesignViewer({
           </div>
         ) : activeTab === "3d" ? (
           <ThreeDRenderer design={design} />
+        ) : activeTab === "pcb" ? (
+          <PcbLayoutEditor
+            design={design}
+            onUpdatePosition={onUpdatePosition ?? (() => {})}
+          />
         ) : (
           <div className="p-6 overflow-auto h-full">
             <div className="max-w-2xl mx-auto">
@@ -126,9 +134,7 @@ export default function DesignViewer({
 
               <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
-                  {activeTab === "schematic"
-                    ? "Schematic View — coming soon"
-                    : "PCB Layout View — coming soon"}
+                  Schematic View — coming soon
                 </p>
 
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">
