@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type { CircuitDesign, Component } from "../types/circuit";
 import {
   getFootprint,
   getComponentBounds,
   rectanglesOverlap,
 } from "../lib/footprintLookup";
+import { getPads } from "../lib/padLibrary";
 
 interface Props {
   design: CircuitDesign;
@@ -29,6 +30,11 @@ const TYPE_COLORS: Record<string, string> = {
   switch: "#ec4899",
   regulator: "#14b8a6",
 };
+
+const NET_COLORS = [
+  "#ef4444", "#3b82f6", "#22c55e", "#f97316",
+  "#a855f7", "#06b6d4", "#ec4899", "#eab308",
+];
 
 export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
   const { board, components } = design;
@@ -253,6 +259,38 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
 
   const overlapping = getOverlaps();
 
+  const padPositions = useMemo(() => {
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const comp of components) {
+      const pos = getEffectivePosition(comp);
+      const pads = getPads(comp.package, comp.pins.length);
+      const rot = ((pos.rotation % 360) + 360) % 360;
+      const rad = (rot * Math.PI) / 180;
+      for (const pad of pads) {
+        const rx = pad.x * Math.cos(rad) - pad.y * Math.sin(rad);
+        const ry = pad.x * Math.sin(rad) + pad.y * Math.cos(rad);
+        positions.set(`${comp.ref}.${pad.id}`, { x: pos.x + rx, y: pos.y + ry });
+      }
+    }
+    return positions;
+  }, [components, getEffectivePosition]);
+
+  const ratNestLines = useMemo(() => {
+    const lines: { x1: number; y1: number; x2: number; y2: number; netName: string }[] = [];
+    const routedNets = new Set((design.traces || []).map((t) => t.netName));
+    for (const conn of design.connections) {
+      if (routedNets.has(conn.netName)) continue;
+      for (let i = 0; i < conn.pins.length - 1; i++) {
+        const p1 = padPositions.get(`${conn.pins[i].ref}.${conn.pins[i].pin}`);
+        const p2 = padPositions.get(`${conn.pins[i + 1].ref}.${conn.pins[i + 1].pin}`);
+        if (p1 && p2) {
+          lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, netName: conn.netName });
+        }
+      }
+    }
+    return lines;
+  }, [design.connections, design.traces, padPositions]);
+
   const cursor = dragging ? "grabbing" : isPanning ? "grabbing" : "grab";
 
   return (
@@ -281,6 +319,41 @@ export default function PcbLayoutEditor({ design, onUpdatePosition }: Props) {
           stroke="#0f3d1a"
           strokeWidth={0.5}
         />
+
+        {/* Routed traces */}
+        {(design.traces || []).map((trace, i) => {
+          const netIdx = design.connections.findIndex((c) => c.netName === trace.netName);
+          const color = NET_COLORS[(netIdx >= 0 ? netIdx : i) % NET_COLORS.length];
+          const pointsStr = trace.points.map((p) => `${p.x},${p.y}`).join(" ");
+          return (
+            <g key={`trace-${i}`}>
+              <polyline
+                points={pointsStr}
+                fill="none"
+                stroke={color}
+                strokeWidth={trace.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ pointerEvents: "none" }}
+              />
+              <circle cx={trace.points[0].x} cy={trace.points[0].y} r={trace.width * 0.8} fill={color} style={{ pointerEvents: "none" }} />
+              <circle cx={trace.points[trace.points.length - 1].x} cy={trace.points[trace.points.length - 1].y} r={trace.width * 0.8} fill={color} style={{ pointerEvents: "none" }} />
+            </g>
+          );
+        })}
+
+        {/* Rat's nest (unrouted connections) */}
+        {ratNestLines.map((line, i) => (
+          <line
+            key={`ratnest-${i}`}
+            x1={line.x1} y1={line.y1}
+            x2={line.x2} y2={line.y2}
+            stroke="#9ca3af"
+            strokeWidth={0.15}
+            strokeDasharray="1 1"
+            style={{ pointerEvents: "none" }}
+          />
+        ))}
 
         {/* Components */}
         {components.map((comp) => {
