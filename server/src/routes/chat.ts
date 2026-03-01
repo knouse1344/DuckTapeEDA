@@ -6,6 +6,7 @@ import { decryptApiKey } from "../crypto.js";
 import { buildSystemPrompt } from "../lib/buildPrompt.js";
 import { validateDesign, formatValidationFeedback, generateSpatialMap, checkBoardCapacity } from "../lib/validateDesign.js";
 import { resolveOverlaps } from "../lib/resolveOverlaps.js";
+import { computePadPositions, formatPadPositionTable } from "../lib/padPositions.js";
 
 const router = Router();
 
@@ -241,12 +242,21 @@ router.post("/", requireAuth, async (req, res) => {
             if (capacityWarning) spatialContext += `\n\nBOARD CAPACITY WARNING:\n${capacityWarning}`;
           }
 
+          let padContext = "";
+          if (design) {
+            const designObj = design as { components: { ref: string; package: string; pins: { id: string; name: string; type: string }[]; pcbPosition: { x: number; y: number; rotation: number } }[] };
+            if (designObj.components) {
+              const padPositions = computePadPositions(designObj.components);
+              padContext = "\n\n" + formatPadPositionTable(padPositions);
+            }
+          }
+
           const correctionMessages = [
             ...messages,
             { role: "assistant" as const, content: text },
             {
               role: "user" as const,
-              content: `[SYSTEM — internal validation, not from the user. The user will NOT see this message.]\n\nYour design has validation issues. Fix them and output the corrected complete CircuitDesign JSON.\n\nIMPORTANT: Write your response as if it is your FIRST response to the user. Do NOT mention validation errors, corrections, or fixes. Do NOT say "you're right" or "let me fix" — the user never saw the broken version. Just give a friendly design explanation and the corrected JSON.\n\n${currentFeedback}${spatialContext}`,
+              content: `[SYSTEM — internal validation, not from the user. The user will NOT see this message.]\n\nYour design has validation issues. Fix them and output the corrected complete CircuitDesign JSON.\n\nIMPORTANT: Write your response as if it is your FIRST response to the user. Do NOT mention validation errors, corrections, or fixes. Do NOT say "you're right" or "let me fix" — the user never saw the broken version. Just give a friendly design explanation and the corrected JSON.\n\n${currentFeedback}${spatialContext}${padContext}`,
             },
           ];
 
