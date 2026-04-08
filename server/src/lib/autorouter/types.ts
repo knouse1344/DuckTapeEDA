@@ -109,7 +109,7 @@ export interface RouteFailure {
 }
 
 export interface RouterResult {
-  traces: import("../../../../src/types/circuit.js").Trace[];
+  traces: import("../../types/circuit.js").Trace[];
   failures: RouteFailure[];
   stats: {
     totalNets: number;

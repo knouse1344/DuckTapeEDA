@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildGrid, stampTrace } from "./GridBuilder.js";
 import { CellFlag, hasFlag, getNetId, toGridCoord } from "./types.js";
-import type { CircuitDesign } from "../../../../src/types/circuit.js";
+import type { CircuitDesign } from "../../types/circuit.js";
 
 function makeDesign(overrides: Partial<CircuitDesign> = {}): CircuitDesign {
   return {

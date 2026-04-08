@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { routeDesign } from "./index.js";
 import { validateRoutes } from "../validateDesign.js";
-import type { CircuitDesign } from "../../../../src/types/circuit.js";
+import type { CircuitDesign } from "../../types/circuit.js";
 
 function makeLedCircuit(): CircuitDesign {
   // Uses realistic through-hole packages on a 40x30mm board.

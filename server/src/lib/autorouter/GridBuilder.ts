@@ -12,7 +12,7 @@ import {
   clearCell,
   setNetId,
 } from "./types.js";
-import type { CircuitDesign } from "../../../../src/types/circuit.js";
+import type { CircuitDesign } from "../../types/circuit.js";
 import { getFootprint, getComponentBounds } from "../footprintTable.js";
 import { computePadPositions } from "../padPositions.js";
 

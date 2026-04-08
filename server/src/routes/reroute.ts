@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { validateRoutes } from "../lib/validateDesign.js";
 import { routeDesign } from "../lib/autorouter/index.js";
-import type { CircuitDesign } from "../../../src/types/circuit.js";
+import type { CircuitDesign } from "../types/circuit.js";
 
 const router = Router();
 

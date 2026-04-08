@@ -1,4 +1,4 @@
-import type { CircuitDesign, Trace } from "../../../../src/types/circuit.js";
+import type { CircuitDesign, Trace } from "../../types/circuit.js";
 import type { RouterResult, RouteFailure } from "./types.js";
 import {
   CELL_SIZE,

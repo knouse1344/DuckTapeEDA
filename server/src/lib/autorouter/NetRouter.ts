@@ -1,4 +1,4 @@
-import type { Connection } from "../../../../src/types/circuit.js";
+import type { Connection } from "../../types/circuit.js";
 
 /* ── Power-net detection ─────────────────────────────────────── */
 

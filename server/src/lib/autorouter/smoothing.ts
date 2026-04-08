@@ -1,5 +1,5 @@
 import type { GridPoint } from "./types.js";
-import type { Trace, TracePoint } from "../../../../src/types/circuit.js";
+import type { Trace, TracePoint } from "../../types/circuit.js";
 import { toBoardCoord } from "./types.js";
 
 interface PadSnap {

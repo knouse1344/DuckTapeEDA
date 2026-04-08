@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { orderNets, buildSpanningPairs } from "./NetRouter.js";
-import type { Connection } from "../../../../src/types/circuit.js";
+import type { Connection } from "../../types/circuit.js";
 
 describe("orderNets", () => {
   it("puts power nets (GND, VBUS, VCC) first", () => {
