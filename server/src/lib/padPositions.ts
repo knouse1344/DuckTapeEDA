@@ -354,9 +354,16 @@ const PACKAGE_PADS: Record<string, PadDef[]> = {
  * Look up pad definitions for a package.
  * Falls back to dynamically generated pads based on pin count if package not found.
  */
+const PACKAGE_ALIASES: Record<string, string> = {
+  "USB-C": "USB_C_Receptacle",
+  "USB_C": "USB_C_Receptacle",
+  "USBC": "USB_C_Receptacle",
+};
+
 function getPads(packageName: string, pinCount: number): PadDef[] {
-  if (PACKAGE_PADS[packageName]) {
-    return PACKAGE_PADS[packageName];
+  const resolved = PACKAGE_ALIASES[packageName] ?? packageName;
+  if (PACKAGE_PADS[resolved]) {
+    return PACKAGE_PADS[resolved];
   }
 
   const headerMatch = packageName.match(/^PinHeader_1x(\d+)/);

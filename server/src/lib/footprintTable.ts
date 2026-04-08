@@ -128,9 +128,15 @@ export function getFootprint(pkg: string, type?: string, value?: string): Footpr
     }
   }
 
-  // 2. Exact package match
-  if (PACKAGE_FOOTPRINTS[pkg]) {
-    return PACKAGE_FOOTPRINTS[pkg];
+  // 2. Exact package match (with alias resolution)
+  const PACKAGE_ALIASES: Record<string, string> = {
+    "USB-C": "USB_C_Receptacle",
+    "USB_C": "USB_C_Receptacle",
+    "USBC": "USB_C_Receptacle",
+  };
+  const resolved = PACKAGE_ALIASES[pkg] ?? pkg;
+  if (PACKAGE_FOOTPRINTS[resolved]) {
+    return PACKAGE_FOOTPRINTS[resolved];
   }
 
   // 3. Dynamic sizing — handles PinHeader_1xN_P2.54mm, JST_PH_SxB-PH-K_1xN...
