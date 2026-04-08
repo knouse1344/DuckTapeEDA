@@ -1,13 +1,29 @@
 import type { CircuitDesign, Trace } from "../types/circuit";
 
-/**
- * Call the server to AI-generate trace routes for the current design.
- * Returns the new traces array on success.
- */
+export interface RouteFailure {
+  net: string;
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export interface RouteStats {
+  totalNets: number;
+  routedNets: number;
+  failedNets: number;
+  timeMs: number;
+}
+
+export interface RerouteResult {
+  traces: Trace[];
+  failures: RouteFailure[];
+  stats: RouteStats;
+}
+
 export async function rerouteTraces(
   token: string,
   design: CircuitDesign,
-): Promise<Trace[]> {
+): Promise<RerouteResult> {
   const response = await fetch("/api/reroute", {
     method: "POST",
     headers: {
@@ -25,5 +41,9 @@ export async function rerouteTraces(
   }
 
   const result = await response.json();
-  return result.traces as Trace[];
+  return {
+    traces: result.traces ?? [],
+    failures: result.failures ?? [],
+    stats: result.stats ?? { totalNets: 0, routedNets: 0, failedNets: 0, timeMs: 0 },
+  };
 }
