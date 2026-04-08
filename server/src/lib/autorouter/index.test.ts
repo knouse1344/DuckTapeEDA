@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { routeDesign } from "./index.js";
+import { validateRoutes } from "../validateDesign.js";
 import type { CircuitDesign } from "../../../../src/types/circuit.js";
 
 function makeLedCircuit(): CircuitDesign {
@@ -125,5 +126,16 @@ describe("routeDesign — end-to-end", () => {
       expect(r1.traces[i].netName).toBe(r2.traces[i].netName);
       expect(r1.traces[i].points).toEqual(r2.traces[i].points);
     }
+  });
+
+  it("output passes existing route validation", () => {
+    const design = makeLedCircuit();
+    const result = routeDesign(design);
+
+    // Feed autorouter output through the app's existing route validator
+    const designWithTraces = { ...design, traces: result.traces };
+    const issues = validateRoutes(designWithTraces);
+    const errors = issues.filter((i: any) => i.severity === "error");
+    expect(errors).toEqual([]);
   });
 });
