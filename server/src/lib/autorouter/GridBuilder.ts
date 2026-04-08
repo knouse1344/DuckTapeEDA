@@ -111,13 +111,89 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
     }
   }
 
+  // 6b. Connector-specific corridor carving for edge connectors.
+  //     When connectors (USB-C, JST, etc.) sit at board edges, their pads land
+  //     inside the KEEPOUT zone. The generic escape corridor (step 7) fails because
+  //     the escape destination is still inside KEEPOUT. Fix: for each connector pad,
+  //     carve a corridor from the pad toward the board interior (away from the
+  //     nearest board edge), clearing KEEPOUT + BLOCKED_FRONT all the way past the
+  //     KEEPOUT zone so A* can reach the pad.
+  const connectorRefs = new Set(
+    design.components.filter(c => c.type === "connector").map(c => c.ref),
+  );
+
+  const maxTraceInflate = Math.ceil((TRACE_WIDTH_POWER / CELL_SIZE) / 2);
+  const corridorHalf = padInflate + maxTraceInflate; // half-width of corridor
+
+  for (const [key, pos] of padPositions) {
+    const ref = key.split(".")[0];
+    if (!connectorRefs.has(ref)) continue;
+
+    const cx = toGridCoord(pos.x, CELL_SIZE);
+    const cy = toGridCoord(pos.y, CELL_SIZE);
+
+    // Determine which board edge is nearest to this pad
+    const distToLeft = cx;
+    const distToRight = grid.cols - 1 - cx;
+    const distToTop = cy;
+    const distToBottom = grid.rows - 1 - cy;
+    const minEdgeDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+
+    // Escape direction: toward the board center (away from the nearest edge)
+    let dx = 0;
+    let dy = 0;
+    if (minEdgeDist === distToLeft) dx = 1;        // nearest to left  → escape right
+    else if (minEdgeDist === distToRight) dx = -1;  // nearest to right → escape left
+    else if (minEdgeDist === distToTop) dy = 1;     // nearest to top   → escape down
+    else dy = -1;                                    // nearest to bottom → escape up
+
+    // Carve corridor from the pad outward past the KEEPOUT zone.
+    // Endpoint: marginCells + corridorHalf + 1 cells from the edge, ensuring
+    // the corridor exits fully past the KEEPOUT boundary.
+    const corridorEnd = marginCells + corridorHalf + 1;
+
+    if (dx !== 0) {
+      // Horizontal corridor (escape left or right)
+      const startX = cx;
+      const endX = dx > 0
+        ? Math.min(grid.cols - 1, corridorEnd)  // escaping rightward from left edge
+        : Math.max(0, grid.cols - 1 - corridorEnd);  // escaping leftward from right edge
+      const lo = Math.min(startX, endX);
+      const hi = Math.max(startX, endX);
+      for (let gx = lo; gx <= hi; gx++) {
+        for (let d = -corridorHalf; d <= corridorHalf; d++) {
+          const gy = cy + d;
+          if (gx < 0 || gx >= grid.cols || gy < 0 || gy >= grid.rows) continue;
+          clearCell(grid, gx, gy, CellFlag.BLOCKED_FRONT);
+          clearCell(grid, gx, gy, CellFlag.KEEPOUT);
+        }
+      }
+    } else {
+      // Vertical corridor (escape up or down)
+      const startY = cy;
+      const endY = dy > 0
+        ? Math.min(grid.rows - 1, corridorEnd)  // escaping downward from top edge
+        : Math.max(0, grid.rows - 1 - corridorEnd);  // escaping upward from bottom edge
+      const lo = Math.min(startY, endY);
+      const hi = Math.max(startY, endY);
+      for (let gy = lo; gy <= hi; gy++) {
+        for (let d = -corridorHalf; d <= corridorHalf; d++) {
+          const gx = cx + d;
+          if (gx < 0 || gx >= grid.cols || gy < 0 || gy >= grid.rows) continue;
+          clearCell(grid, gx, gy, CellFlag.BLOCKED_FRONT);
+          clearCell(grid, gx, gy, CellFlag.KEEPOUT);
+        }
+      }
+    }
+  }
+
   // 7. Carve escape corridors from each pad to outside the component body.
   //    Without this, pads deep inside a component's blocked zone are unreachable.
   //    For each pad, find the shortest cardinal direction to unblocked space and
   //    carve a corridor wide enough for the widest trace (power net inflate) to pass.
-  const maxTraceInflate = Math.ceil((TRACE_WIDTH_POWER / CELL_SIZE) / 2);
-  const corridorHalf = padInflate + maxTraceInflate; // half-width of corridor
+  //    (Connectors are handled by step 6b above — skip them here.)
   for (const comp of design.components) {
+    if (connectorRefs.has(comp.ref)) continue;
     const fp = getFootprint(comp.package, comp.type, comp.value);
     const bounds = getComponentBounds(
       comp.pcbPosition.x,

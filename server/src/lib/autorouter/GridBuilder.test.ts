@@ -127,6 +127,55 @@ describe("buildGrid — net ID assignment", () => {
   });
 });
 
+describe("buildGrid — edge connector pad carving", () => {
+  it("carves connector pads through KEEPOUT zone to open space", () => {
+    const design = makeDesign({
+      components: [
+        {
+          ref: "J1",
+          type: "connector",
+          value: "USB-C",
+          package: "USB-C",
+          description: "USB-C connector",
+          pins: [
+            { id: "VBUS", name: "VBUS", type: "power" },
+            { id: "GND", name: "GND", type: "ground" },
+            { id: "CC1", name: "CC1", type: "signal" },
+            { id: "CC2", name: "CC2", type: "signal" },
+          ],
+          schematicPosition: { x: 0, y: 0, rotation: 0 },
+          pcbPosition: { x: 3, y: 10, rotation: 0 },
+        },
+      ],
+      connections: [
+        { netName: "VBUS", pins: [{ ref: "J1", pin: "VBUS" }] },
+        { netName: "GND", pins: [{ ref: "J1", pin: "GND" }] },
+      ],
+    });
+    const { grid } = buildGrid(design);
+
+    // USB-C VBUS pad is at offset (-1.75, -3.0) from component center (3, 10)
+    // Absolute: (1.25, 7.0) → grid (5, 28)
+    // This is inside KEEPOUT (cells 0-7). After connector carving,
+    // there must be clear cells from the pad rightward past cell 8.
+    const vbusPadGx = toGridCoord(1.25, 0.25);
+    const vbusPadGy = toGridCoord(7.0, 0.25);
+
+    expect(hasFlag(grid, vbusPadGx, vbusPadGy, CellFlag.PAD)).toBe(true);
+    expect(hasFlag(grid, vbusPadGx, vbusPadGy, CellFlag.KEEPOUT)).toBe(false);
+
+    // Scan rightward — every cell from pad to past KEEPOUT must be clear
+    // (no KEEPOUT or BLOCKED_FRONT). This ensures A* has a continuous path.
+    const marginCells = Math.ceil(2.0 / 0.25);
+    for (let gx = vbusPadGx; gx <= marginCells + 2; gx++) {
+      const ko = hasFlag(grid, gx, vbusPadGy, CellFlag.KEEPOUT);
+      const bl = hasFlag(grid, gx, vbusPadGy, CellFlag.BLOCKED_FRONT);
+      expect(ko).toBe(false);
+      expect(bl).toBe(false);
+    }
+  });
+});
+
 describe("stampTrace", () => {
   it("marks trace cells as TRACE_FRONT with net ID", () => {
     const design = makeDesign();
