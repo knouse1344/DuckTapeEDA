@@ -5,6 +5,7 @@ import {
   CELL_SIZE,
   BOARD_MARGIN,
   TRACE_CLEARANCE,
+  TRACE_WIDTH_POWER,
   createGrid,
   toGridCoord,
   setCell,
@@ -106,6 +107,106 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
         if (netId >= 0) {
           setNetId(grid, gx, gy, netId);
         }
+      }
+    }
+  }
+
+  // 7. Carve escape corridors from each pad to outside the component body.
+  //    Without this, pads deep inside a component's blocked zone are unreachable.
+  //    For each pad, find the shortest cardinal direction to unblocked space and
+  //    carve a corridor wide enough for the widest trace (power net inflate) to pass.
+  const maxTraceInflate = Math.ceil((TRACE_WIDTH_POWER / CELL_SIZE) / 2);
+  const corridorHalf = padInflate + maxTraceInflate; // half-width of corridor
+  for (const comp of design.components) {
+    const fp = getFootprint(comp.package, comp.type, comp.value);
+    const bounds = getComponentBounds(
+      comp.pcbPosition.x,
+      comp.pcbPosition.y,
+      comp.pcbPosition.rotation,
+      fp,
+    );
+
+    const gxMin = Math.max(0, toGridCoord(bounds.left, CELL_SIZE) - clearanceInflate);
+    const gxMax = Math.min(grid.cols - 1, toGridCoord(bounds.right, CELL_SIZE) + clearanceInflate);
+    const gyMin = Math.max(0, toGridCoord(bounds.top, CELL_SIZE) - clearanceInflate);
+    const gyMax = Math.min(grid.rows - 1, toGridCoord(bounds.bottom, CELL_SIZE) + clearanceInflate);
+
+    // Find pads belonging to this component
+    for (const pin of comp.pins) {
+      const key = `${comp.ref}.${pin.id}`;
+      const pos = padPositions.get(key);
+      if (!pos) continue;
+
+      const cx = toGridCoord(pos.x, CELL_SIZE);
+      const cy = toGridCoord(pos.y, CELL_SIZE);
+
+      // Distances to each edge of the blocked zone (in grid cells)
+      const distLeft = cx - gxMin;
+      const distRight = gxMax - cx;
+      const distUp = cy - gyMin;
+      const distDown = gyMax - cy;
+
+      const netId = pinToNet.get(key) ?? -1;
+
+      // Rank escape directions by distance (shortest first),
+      // but skip directions that exit into KEEPOUT or off-board.
+      const dirs: { axis: "h" | "v"; sign: -1 | 1; dist: number }[] = [
+        { axis: "h", sign: -1, dist: distLeft },
+        { axis: "h", sign:  1, dist: distRight },
+        { axis: "v", sign: -1, dist: distUp },
+        { axis: "v", sign:  1, dist: distDown },
+      ];
+      dirs.sort((a, b) => a.dist - b.dist);
+
+      const marginCells2 = Math.ceil(BOARD_MARGIN / CELL_SIZE);
+
+      let carved = false;
+      for (const dir of dirs) {
+        if (dir.dist <= 0) continue; // already at edge
+        // Check that the escape destination is within usable board area
+        let escapeOk = true;
+        if (dir.axis === "h") {
+          const destX = dir.sign < 0 ? gxMin - 1 : gxMax + 1;
+          if (destX < marginCells2 || destX >= grid.cols - marginCells2) escapeOk = false;
+        } else {
+          const destY = dir.sign < 0 ? gyMin - 1 : gyMax + 1;
+          if (destY < marginCells2 || destY >= grid.rows - marginCells2) escapeOk = false;
+        }
+        if (!escapeOk) continue;
+
+        // Carve corridor in chosen direction, wide enough for inflated traces
+        if (dir.axis === "h") {
+          const startX = dir.sign < 0 ? gxMin - 1 : cx + padInflate;
+          const endX = dir.sign < 0 ? cx - padInflate : gxMax + 1;
+          const lo = Math.min(startX, endX);
+          const hi = Math.max(startX, endX);
+          for (let gx = lo; gx <= hi; gx++) {
+            for (let d = -corridorHalf; d <= corridorHalf; d++) {
+              const gy = cy + d;
+              if (gx < 0 || gx >= grid.cols || gy < 0 || gy >= grid.rows) continue;
+              clearCell(grid, gx, gy, CellFlag.BLOCKED_FRONT);
+              clearCell(grid, gx, gy, CellFlag.KEEPOUT);
+              if (netId >= 0) setNetId(grid, gx, gy, netId);
+            }
+          }
+        } else {
+          const startY = dir.sign < 0 ? gyMin - 1 : cy + padInflate;
+          const endY = dir.sign < 0 ? cy - padInflate : gyMax + 1;
+          const lo = Math.min(startY, endY);
+          const hi = Math.max(startY, endY);
+          for (let gy = lo; gy <= hi; gy++) {
+            for (let d = -corridorHalf; d <= corridorHalf; d++) {
+              const gx = cx + d;
+              if (gx < 0 || gx >= grid.cols || gy < 0 || gy >= grid.rows) continue;
+              clearCell(grid, gx, gy, CellFlag.BLOCKED_FRONT);
+              clearCell(grid, gx, gy, CellFlag.KEEPOUT);
+              if (netId >= 0) setNetId(grid, gx, gy, netId);
+            }
+          }
+        }
+
+        carved = true;
+        break;
       }
     }
   }
