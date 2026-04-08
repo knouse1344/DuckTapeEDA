@@ -146,8 +146,6 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
       const distUp = cy - gyMin;
       const distDown = gyMax - cy;
 
-      const netId = pinToNet.get(key) ?? -1;
-
       // Rank escape directions by distance (shortest first),
       // but skip directions that exit into KEEPOUT or off-board.
       const dirs: { axis: "h" | "v"; sign: -1 | 1; dist: number }[] = [
@@ -186,7 +184,6 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
               if (gx < 0 || gx >= grid.cols || gy < 0 || gy >= grid.rows) continue;
               clearCell(grid, gx, gy, CellFlag.BLOCKED_FRONT);
               clearCell(grid, gx, gy, CellFlag.KEEPOUT);
-              if (netId >= 0) setNetId(grid, gx, gy, netId);
             }
           }
         } else {
@@ -200,7 +197,6 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
               if (gx < 0 || gx >= grid.cols || gy < 0 || gy >= grid.rows) continue;
               clearCell(grid, gx, gy, CellFlag.BLOCKED_FRONT);
               clearCell(grid, gx, gy, CellFlag.KEEPOUT);
-              if (netId >= 0) setNetId(grid, gx, gy, netId);
             }
           }
         }

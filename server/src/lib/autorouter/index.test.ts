@@ -3,7 +3,7 @@ import { routeDesign } from "./index.js";
 import type { CircuitDesign } from "../../../../src/types/circuit.js";
 
 function makeLedCircuit(): CircuitDesign {
-  // Uses 0805 SMD packages with well-separated positions on a 30x30mm board.
+  // Uses realistic through-hole packages on a 40x30mm board.
   // Packages and values are chosen to match the footprint/pad lookup tables exactly.
   return {
     name: "LED test",
@@ -13,40 +13,40 @@ function makeLedCircuit(): CircuitDesign {
         ref: "R1",
         type: "resistor",
         value: "330",
-        package: "0805",
+        package: "Axial_TH",
         description: "Current limiting resistor",
         pins: [
           { id: "1", name: "A", type: "passive" },
           { id: "2", name: "B", type: "passive" },
         ],
         schematicPosition: { x: 0, y: 0, rotation: 0 },
-        pcbPosition: { x: 15, y: 15, rotation: 0 },
+        pcbPosition: { x: 20, y: 15, rotation: 0 },
       },
       {
         ref: "D1",
         type: "led",
         value: "red",
-        package: "0805",
-        description: "0805 LED",
+        package: "5mm_TH",
+        description: "5mm through-hole LED",
         pins: [
           { id: "1", name: "Anode", type: "passive" },
           { id: "2", name: "Cathode", type: "passive" },
         ],
         schematicPosition: { x: 0, y: 0, rotation: 0 },
-        pcbPosition: { x: 25, y: 15, rotation: 0 },
+        pcbPosition: { x: 32, y: 15, rotation: 0 },
       },
       {
         ref: "J1",
         type: "connector",
         value: "2pin",
-        package: "0805",
-        description: "2-pin connector pad pair",
+        package: "PinHeader_1x2_P2.54mm",
+        description: "2-pin through-hole header",
         pins: [
           { id: "1", name: "VCC", type: "power" },
           { id: "2", name: "GND", type: "ground" },
         ],
         schematicPosition: { x: 0, y: 0, rotation: 0 },
-        pcbPosition: { x: 5, y: 15, rotation: 0 },
+        pcbPosition: { x: 8, y: 15, rotation: 0 },
       },
     ],
     connections: [
@@ -72,7 +72,7 @@ function makeLedCircuit(): CircuitDesign {
         ],
       },
     ],
-    board: { width: 30, height: 30, layers: 2, cornerRadius: 1 },
+    board: { width: 40, height: 30, layers: 2, cornerRadius: 1 },
     notes: [],
   };
 }
@@ -95,7 +95,7 @@ describe("routeDesign — end-to-end", () => {
 
       for (const pt of trace.points) {
         expect(pt.x).toBeGreaterThanOrEqual(0);
-        expect(pt.x).toBeLessThanOrEqual(30);
+        expect(pt.x).toBeLessThanOrEqual(40);
         expect(pt.y).toBeGreaterThanOrEqual(0);
         expect(pt.y).toBeLessThanOrEqual(30);
       }
