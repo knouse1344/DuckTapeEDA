@@ -176,6 +176,61 @@ describe("buildGrid — edge connector pad carving", () => {
   });
 });
 
+describe("buildGrid — unified corridor for multiple connectors on same edge", () => {
+  it("carves unified corridor for two connectors on same edge", () => {
+    const design = makeDesign({
+      board: { width: 40, height: 40, layers: 2, cornerRadius: 0 },
+      components: [
+        {
+          ref: "J1",
+          type: "connector",
+          value: "USB-C",
+          package: "USB-C",
+          description: "USB-C",
+          pins: [
+            { id: "VBUS", name: "VBUS", type: "power" },
+            { id: "GND", name: "GND", type: "ground" },
+            { id: "CC1", name: "CC1", type: "signal" },
+            { id: "CC2", name: "CC2", type: "signal" },
+          ],
+          schematicPosition: { x: 0, y: 0, rotation: 0 },
+          pcbPosition: { x: 3, y: 12, rotation: 0 },
+        },
+        {
+          ref: "J2",
+          type: "connector",
+          value: "PinHeader_1x3",
+          package: "PinHeader_1x3_P2.54mm",
+          description: "3-pin header",
+          pins: [
+            { id: "1", name: "VCC", type: "power" },
+            { id: "2", name: "DIN", type: "signal" },
+            { id: "3", name: "GND", type: "ground" },
+          ],
+          schematicPosition: { x: 0, y: 0, rotation: 0 },
+          pcbPosition: { x: 3, y: 28, rotation: 0 },
+        },
+      ],
+      connections: [
+        { netName: "VBUS", pins: [{ ref: "J1", pin: "VBUS" }, { ref: "J2", pin: "1" }] },
+        { netName: "GND", pins: [{ ref: "J1", pin: "GND" }, { ref: "J2", pin: "3" }] },
+      ],
+    });
+    const { grid } = buildGrid(design);
+
+    // Both connectors are on left edge. The corridor between them (y=12 to y=28)
+    // should be clear at x = marginCells (cell 8, which is past KEEPOUT).
+    const checkX = Math.ceil(2.0 / 0.25); // marginCells = 8
+    for (let gy = toGridCoord(12, 0.25); gy <= toGridCoord(28, 0.25); gy++) {
+      const blocked = hasFlag(grid, checkX, gy, CellFlag.KEEPOUT) ||
+                      hasFlag(grid, checkX, gy, CellFlag.BLOCKED_FRONT);
+      if (blocked) {
+        expect.unreachable(`Cell (${checkX}, ${gy}) is blocked between two edge connectors`);
+      }
+    }
+  });
+});
+
 describe("stampTrace", () => {
   it("marks trace cells as TRACE_FRONT with net ID", () => {
     const design = makeDesign();

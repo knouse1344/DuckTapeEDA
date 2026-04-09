@@ -111,14 +111,14 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
     }
   }
 
-  // 6b. Connector-specific corridor carving for edge connectors.
+  // 6b. Connector corridor carving — unified per edge.
   //     When connectors (USB-C, JST, etc.) sit at board edges, their pads land
   //     inside the KEEPOUT zone. The generic escape corridor (step 7) fails because
-  //     the escape destination is still inside KEEPOUT. Fix: for each connector,
-  //     carve a single wide corridor from the pad cluster toward the board interior
-  //     (away from the nearest board edge), clearing KEEPOUT + BLOCKED_FRONT all
-  //     the way past both the KEEPOUT zone AND the component's blocked body.
-  //     The corridor is wide enough for all pads' traces to fan out simultaneously.
+  //     the escape destination is still inside KEEPOUT. Fix: group connectors by
+  //     their nearest board edge and carve a SINGLE unified corridor per edge that
+  //     spans from the minimum to maximum pad position across ALL connectors on
+  //     that edge. This ensures the gap between two connectors on the same edge
+  //     is also cleared, allowing the router to route nets between them.
   const connectorComps = design.components.filter(c => c.type === "connector");
   const connectorRefs = new Set(connectorComps.map(c => c.ref));
 
@@ -126,73 +126,92 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
   // Width needed per trace channel: inflated trace (2*inflate+1) + 1 cell gap
   const channelWidth = 2 * maxTraceInflate + 1 + 1;
 
-  for (const comp of connectorComps) {
-    const fp = getFootprint(comp.package, comp.type, comp.value);
-    const bounds = getComponentBounds(
-      comp.pcbPosition.x,
-      comp.pcbPosition.y,
-      comp.pcbPosition.rotation,
-      fp,
-    );
-    const cBounds = {
-      gxMin: Math.max(0, toGridCoord(bounds.left, CELL_SIZE) - clearanceInflate),
-      gxMax: Math.min(grid.cols - 1, toGridCoord(bounds.right, CELL_SIZE) + clearanceInflate),
-      gyMin: Math.max(0, toGridCoord(bounds.top, CELL_SIZE) - clearanceInflate),
-      gyMax: Math.min(grid.rows - 1, toGridCoord(bounds.bottom, CELL_SIZE) + clearanceInflate),
-    };
+  // Group connectors by nearest board edge
+  type Edge = "left" | "right" | "top" | "bottom";
+  const edgeGroups = new Map<Edge, typeof connectorComps>();
 
-    // Collect all pad grid positions for this connector
-    const connPads: { gx: number; gy: number }[] = [];
+  for (const comp of connectorComps) {
+    // Collect pad positions for this connector to find its pad center
+    const compPads: { gx: number; gy: number }[] = [];
     for (const pin of comp.pins) {
       const key = `${comp.ref}.${pin.id}`;
       const pos = padPositions.get(key);
       if (!pos) continue;
-      connPads.push({ gx: toGridCoord(pos.x, CELL_SIZE), gy: toGridCoord(pos.y, CELL_SIZE) });
+      compPads.push({ gx: toGridCoord(pos.x, CELL_SIZE), gy: toGridCoord(pos.y, CELL_SIZE) });
     }
-    if (connPads.length === 0) continue;
+    if (compPads.length === 0) continue;
 
-    // Compute pad cluster center
-    const padCenterX = Math.round(connPads.reduce((s, p) => s + p.gx, 0) / connPads.length);
-    const padCenterY = Math.round(connPads.reduce((s, p) => s + p.gy, 0) / connPads.length);
+    const padCenterX = Math.round(compPads.reduce((s, p) => s + p.gx, 0) / compPads.length);
+    const padCenterY = Math.round(compPads.reduce((s, p) => s + p.gy, 0) / compPads.length);
 
-    // Determine which board edge the connector is nearest to
     const distToLeft = padCenterX;
     const distToRight = grid.cols - 1 - padCenterX;
     const distToTop = padCenterY;
     const distToBottom = grid.rows - 1 - padCenterY;
     const minEdgeDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
 
-    // Escape direction: toward the board center (away from the nearest edge)
-    let dx = 0;
-    let dy = 0;
-    if (minEdgeDist === distToLeft) dx = 1;
-    else if (minEdgeDist === distToRight) dx = -1;
-    else if (minEdgeDist === distToTop) dy = 1;
-    else dy = -1;
+    let edge: Edge;
+    if (minEdgeDist === distToLeft) edge = "left";
+    else if (minEdgeDist === distToRight) edge = "right";
+    else if (minEdgeDist === distToTop) edge = "top";
+    else edge = "bottom";
 
-    // Compute corridor span perpendicular to escape direction.
-    // Must span from the outermost pads plus enough room for all
-    // traces to fan out with their inflate checks.
-    const fanOutMargin = connPads.length * channelWidth;
+    if (!edgeGroups.has(edge)) edgeGroups.set(edge, []);
+    edgeGroups.get(edge)!.push(comp);
+  }
 
-    // Extra margin around the pad cluster so inflate checks at the
-    // outermost pad positions don't bump into un-cleared cells.
+  // For each edge group, collect ALL pads and component bounds, then carve one unified corridor
+  for (const [edge, comps] of edgeGroups) {
+    // Collect all pads from all connectors in this edge group
+    const allPads: { gx: number; gy: number }[] = [];
+    // Collect all component bounds
+    let unifiedBodyGxMin = Infinity;
+    let unifiedBodyGxMax = -Infinity;
+    let unifiedBodyGyMin = Infinity;
+    let unifiedBodyGyMax = -Infinity;
+
+    for (const comp of comps) {
+      const fp = getFootprint(comp.package, comp.type, comp.value);
+      const bounds = getComponentBounds(
+        comp.pcbPosition.x,
+        comp.pcbPosition.y,
+        comp.pcbPosition.rotation,
+        fp,
+      );
+      unifiedBodyGxMin = Math.min(unifiedBodyGxMin, Math.max(0, toGridCoord(bounds.left, CELL_SIZE) - clearanceInflate));
+      unifiedBodyGxMax = Math.max(unifiedBodyGxMax, Math.min(grid.cols - 1, toGridCoord(bounds.right, CELL_SIZE) + clearanceInflate));
+      unifiedBodyGyMin = Math.min(unifiedBodyGyMin, Math.max(0, toGridCoord(bounds.top, CELL_SIZE) - clearanceInflate));
+      unifiedBodyGyMax = Math.max(unifiedBodyGyMax, Math.min(grid.rows - 1, toGridCoord(bounds.bottom, CELL_SIZE) + clearanceInflate));
+
+      for (const pin of comp.pins) {
+        const key = `${comp.ref}.${pin.id}`;
+        const pos = padPositions.get(key);
+        if (!pos) continue;
+        allPads.push({ gx: toGridCoord(pos.x, CELL_SIZE), gy: toGridCoord(pos.y, CELL_SIZE) });
+      }
+    }
+    if (allPads.length === 0) continue;
+
+    // Compute fan-out margin based on TOTAL pad count across all connectors on this edge
+    const fanOutMargin = allPads.length * channelWidth;
     const inflateMargin = padInflate + maxTraceInflate;
 
+    // Escape direction: toward board center (away from the nearest edge)
+    const dx = edge === "left" ? 1 : edge === "right" ? -1 : 0;
+    const dy = edge === "top" ? 1 : edge === "bottom" ? -1 : 0;
+
     if (dx !== 0) {
-      // Escape is horizontal (left/right edge connector)
-      const padGyMin = Math.min(...connPads.map(p => p.gy));
-      const padGyMax = Math.max(...connPads.map(p => p.gy));
+      // Escape is horizontal (left/right edge connector group)
+      const padGyMin = Math.min(...allPads.map(p => p.gy));
+      const padGyMax = Math.max(...allPads.map(p => p.gy));
       const corridorGyMin = Math.max(0, padGyMin - fanOutMargin);
       const corridorGyMax = Math.min(grid.rows - 1, padGyMax + fanOutMargin);
 
-      // Corridor extends from behind the pads (inflateMargin before the
-      // nearest pad) all the way past the component body + KEEPOUT.
-      const padGxMin = Math.min(...connPads.map(p => p.gx));
-      const padGxMax = Math.max(...connPads.map(p => p.gx));
+      const padGxMin = Math.min(...allPads.map(p => p.gx));
+      const padGxMax = Math.max(...allPads.map(p => p.gx));
       const bodyEnd = dx > 0
-        ? cBounds.gxMax + maxTraceInflate + 2
-        : cBounds.gxMin - maxTraceInflate - 2;
+        ? unifiedBodyGxMax + maxTraceInflate + 2
+        : unifiedBodyGxMin - maxTraceInflate - 2;
       const keepoutEnd = dx > 0
         ? marginCells + maxTraceInflate + 2
         : grid.cols - 1 - marginCells - maxTraceInflate - 2;
@@ -200,7 +219,6 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
         ? Math.min(grid.cols - 1, Math.max(bodyEnd, keepoutEnd))
         : Math.max(0, Math.min(bodyEnd, keepoutEnd));
 
-      // Start the corridor from behind the pad cluster (opposite escape dir)
       const corridorGxStart = dx > 0
         ? Math.max(0, padGxMin - inflateMargin)
         : Math.min(grid.cols - 1, padGxMax + inflateMargin);
@@ -216,17 +234,17 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
         }
       }
     } else {
-      // Escape is vertical (top/bottom edge connector)
-      const padGxMin = Math.min(...connPads.map(p => p.gx));
-      const padGxMax = Math.max(...connPads.map(p => p.gx));
+      // Escape is vertical (top/bottom edge connector group)
+      const padGxMin = Math.min(...allPads.map(p => p.gx));
+      const padGxMax = Math.max(...allPads.map(p => p.gx));
       const corridorGxMin = Math.max(0, padGxMin - fanOutMargin);
       const corridorGxMax = Math.min(grid.cols - 1, padGxMax + fanOutMargin);
 
-      const padGyMin = Math.min(...connPads.map(p => p.gy));
-      const padGyMax = Math.max(...connPads.map(p => p.gy));
+      const padGyMin = Math.min(...allPads.map(p => p.gy));
+      const padGyMax = Math.max(...allPads.map(p => p.gy));
       const bodyEnd = dy > 0
-        ? cBounds.gyMax + maxTraceInflate + 2
-        : cBounds.gyMin - maxTraceInflate - 2;
+        ? unifiedBodyGyMax + maxTraceInflate + 2
+        : unifiedBodyGyMin - maxTraceInflate - 2;
       const keepoutEnd = dy > 0
         ? marginCells + maxTraceInflate + 2
         : grid.rows - 1 - marginCells - maxTraceInflate - 2;
