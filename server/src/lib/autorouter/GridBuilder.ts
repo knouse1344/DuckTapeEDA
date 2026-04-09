@@ -204,17 +204,22 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
       // Escape is horizontal (left/right edge connector group)
       const padGyMin = Math.min(...allPads.map(p => p.gy));
       const padGyMax = Math.max(...allPads.map(p => p.gy));
-      const corridorGyMin = Math.max(0, padGyMin - fanOutMargin);
-      const corridorGyMax = Math.min(grid.rows - 1, padGyMax + fanOutMargin);
+      // Ensure minimum corridor width for all traces to fit side-by-side
+      const minCorridorHalfY = Math.ceil(((allPads.length + 1) * channelWidth) / 2);
+      const actualFanOutY = Math.max(fanOutMargin, minCorridorHalfY);
+      const corridorGyMin = Math.max(0, padGyMin - actualFanOutY);
+      const corridorGyMax = Math.min(grid.rows - 1, padGyMax + actualFanOutY);
 
       const padGxMin = Math.min(...allPads.map(p => p.gx));
       const padGxMax = Math.max(...allPads.map(p => p.gx));
       const bodyEnd = dx > 0
         ? unifiedBodyGxMax + maxTraceInflate + 2
         : unifiedBodyGxMin - maxTraceInflate - 2;
+      // Extend corridor deeper into board so traces can fan out
+      const fanDepthX = Math.max(maxTraceInflate + 2, Math.ceil(fanOutMargin / 2));
       const keepoutEnd = dx > 0
-        ? marginCells + maxTraceInflate + 2
-        : grid.cols - 1 - marginCells - maxTraceInflate - 2;
+        ? marginCells + fanDepthX
+        : grid.cols - 1 - marginCells - fanDepthX;
       const corridorGxEnd = dx > 0
         ? Math.min(grid.cols - 1, Math.max(bodyEnd, keepoutEnd))
         : Math.max(0, Math.min(bodyEnd, keepoutEnd));
@@ -237,17 +242,22 @@ export function buildGrid(design: CircuitDesign): BuildGridResult {
       // Escape is vertical (top/bottom edge connector group)
       const padGxMin = Math.min(...allPads.map(p => p.gx));
       const padGxMax = Math.max(...allPads.map(p => p.gx));
-      const corridorGxMin = Math.max(0, padGxMin - fanOutMargin);
-      const corridorGxMax = Math.min(grid.cols - 1, padGxMax + fanOutMargin);
+      // Ensure minimum corridor width for all traces to fit side-by-side
+      const minCorridorHalfX = Math.ceil(((allPads.length + 1) * channelWidth) / 2);
+      const actualFanOutX = Math.max(fanOutMargin, minCorridorHalfX);
+      const corridorGxMin = Math.max(0, padGxMin - actualFanOutX);
+      const corridorGxMax = Math.min(grid.cols - 1, padGxMax + actualFanOutX);
 
       const padGyMin = Math.min(...allPads.map(p => p.gy));
       const padGyMax = Math.max(...allPads.map(p => p.gy));
       const bodyEnd = dy > 0
         ? unifiedBodyGyMax + maxTraceInflate + 2
         : unifiedBodyGyMin - maxTraceInflate - 2;
+      // Extend corridor deeper into board so traces can fan out
+      const fanDepthY = Math.max(maxTraceInflate + 2, Math.ceil(fanOutMargin / 2));
       const keepoutEnd = dy > 0
-        ? marginCells + maxTraceInflate + 2
-        : grid.rows - 1 - marginCells - maxTraceInflate - 2;
+        ? marginCells + fanDepthY
+        : grid.rows - 1 - marginCells - fanDepthY;
       const corridorGyEnd = dy > 0
         ? Math.min(grid.rows - 1, Math.max(bodyEnd, keepoutEnd))
         : Math.max(0, Math.min(bodyEnd, keepoutEnd));
