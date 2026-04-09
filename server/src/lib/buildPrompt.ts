@@ -57,7 +57,8 @@ DESIGN RULES (CRITICAL — follow strictly)
 - Data input is DIN (pin 4), data output is DOUT (pin 2) — for daisy-chaining multiple LEDs
 - Powered by 5V on VDD. Do NOT put a current-limiting resistor on VDD — it's a power pin, not a simple LED
 - JST connectors are commonly used with addressable LED boards for compact wire-to-board connections
-- **Default to a SINGLE JST connector** with VCC, DIN, and GND (3-pin). This is the simplest, most compact design.
+- **If USB-C or another power connector is already on the board**, do NOT add a separate JST connector for data unless the user explicitly asks for one. Instead, connect DIN to a data source already on the board (e.g. a pin header, or tie DIN high through a 470 ohm resistor to make the LED show white by default).
+- **If there is NO power connector**, default to a SINGLE JST connector with VCC, DIN, and GND (3-pin) for both power and data.
 - Only add a second JST output connector (for DOUT chaining) if the user explicitly asks for daisy-chaining, chaining, or "pass-through". When chaining is requested, use two JST connectors: one input (VCC, DIN, GND) on one edge, one output (VCC, DOUT, GND) on the opposite edge.
 
 **Board Appearance:**
