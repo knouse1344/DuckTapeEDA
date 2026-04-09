@@ -15,16 +15,24 @@ function isPowerNet(name: string): boolean {
 
 /**
  * Order nets for routing priority:
- *  1. Power nets first (GND, VBUS, VCC, VDD, 3V3, 5V, 12V, etc.)
- *  2. Then by pin count ascending (fewer pins = simpler = route first)
- *  3. Then alphabetical by net name for determinism
+ *  1. Pin count ascending (fewer pins = simpler path = route first to
+ *     minimize blocking of later, more complex nets)
+ *  2. Signal nets before power nets at the same pin count (power traces
+ *     are wider and block more area, so defer them)
+ *  3. Alphabetical by net name for determinism
+ *
+ * Rationale: routing fewer-pin / signal nets first keeps the grid open
+ * for multi-pin power nets (like GND) whose spanning trees need to
+ * weave around existing traces.  This prevents early power routes from
+ * cutting off escape paths for later signal nets (a common failure
+ * with edge-placed connectors like USB-C).
  */
 export function orderNets(connections: Connection[]): Connection[] {
   return [...connections].sort((a, b) => {
-    const aPower = isPowerNet(a.netName) ? 0 : 1;
-    const bPower = isPowerNet(b.netName) ? 0 : 1;
-    if (aPower !== bPower) return aPower - bPower;
     if (a.pins.length !== b.pins.length) return a.pins.length - b.pins.length;
+    const aPower = isPowerNet(a.netName) ? 1 : 0;
+    const bPower = isPowerNet(b.netName) ? 1 : 0;
+    if (aPower !== bPower) return aPower - bPower;
     return a.netName.localeCompare(b.netName);
   });
 }

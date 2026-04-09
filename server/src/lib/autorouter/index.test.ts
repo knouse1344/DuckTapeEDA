@@ -139,3 +139,109 @@ describe("routeDesign — end-to-end", () => {
     expect(errors).toEqual([]);
   });
 });
+
+function makeUsbcLedCircuit(): CircuitDesign {
+  return {
+    name: "USB-C LED test",
+    description: "LED powered by USB-C at board edge",
+    components: [
+      {
+        ref: "J1",
+        type: "connector",
+        value: "USB-C",
+        package: "USB-C",
+        description: "USB-C power connector",
+        pins: [
+          { id: "VBUS", name: "VBUS", type: "power" },
+          { id: "GND", name: "GND", type: "ground" },
+          { id: "CC1", name: "CC1", type: "signal" },
+          { id: "CC2", name: "CC2", type: "signal" },
+        ],
+        schematicPosition: { x: 0, y: 0, rotation: 0 },
+        pcbPosition: { x: 3, y: 15, rotation: 0 },
+      },
+      {
+        ref: "R1",
+        type: "resistor",
+        value: "5.1k",
+        package: "0805",
+        description: "CC1 pull-down",
+        pins: [
+          { id: "1", name: "A", type: "passive" },
+          { id: "2", name: "B", type: "passive" },
+        ],
+        schematicPosition: { x: 0, y: 0, rotation: 0 },
+        pcbPosition: { x: 15, y: 10, rotation: 0 },
+      },
+      {
+        ref: "R2",
+        type: "resistor",
+        value: "5.1k",
+        package: "0805",
+        description: "CC2 pull-down",
+        pins: [
+          { id: "1", name: "A", type: "passive" },
+          { id: "2", name: "B", type: "passive" },
+        ],
+        schematicPosition: { x: 0, y: 0, rotation: 0 },
+        pcbPosition: { x: 15, y: 20, rotation: 0 },
+      },
+      {
+        ref: "R3",
+        type: "resistor",
+        value: "150",
+        package: "0805",
+        description: "LED current limiter",
+        pins: [
+          { id: "1", name: "A", type: "passive" },
+          { id: "2", name: "B", type: "passive" },
+        ],
+        schematicPosition: { x: 0, y: 0, rotation: 0 },
+        pcbPosition: { x: 25, y: 15, rotation: 0 },
+      },
+      {
+        ref: "D1",
+        type: "led",
+        value: "Red LED",
+        package: "0805",
+        description: "LED",
+        pins: [
+          { id: "1", name: "Anode", type: "passive" },
+          { id: "2", name: "Cathode", type: "passive" },
+        ],
+        schematicPosition: { x: 0, y: 0, rotation: 0 },
+        pcbPosition: { x: 33, y: 15, rotation: 0 },
+      },
+    ],
+    connections: [
+      { netName: "VBUS", pins: [{ ref: "J1", pin: "VBUS" }, { ref: "R3", pin: "1" }] },
+      { netName: "LED_A", pins: [{ ref: "R3", pin: "2" }, { ref: "D1", pin: "1" }] },
+      { netName: "GND", pins: [{ ref: "D1", pin: "2" }, { ref: "J1", pin: "GND" }, { ref: "R1", pin: "2" }, { ref: "R2", pin: "2" }] },
+      { netName: "CC1", pins: [{ ref: "J1", pin: "CC1" }, { ref: "R1", pin: "1" }] },
+      { netName: "CC2", pins: [{ ref: "J1", pin: "CC2" }, { ref: "R2", pin: "1" }] },
+    ],
+    board: { width: 40, height: 30, layers: 2, cornerRadius: 1 },
+    notes: [],
+  };
+}
+
+describe("routeDesign — USB-C at board edge", () => {
+  it("routes all nets including USB-C connector at left edge", () => {
+    const design = makeUsbcLedCircuit();
+    const result = routeDesign(design);
+
+    expect(result.stats.failedNets).toBe(0);
+    expect(result.failures.length).toBe(0);
+    expect(result.stats.routedNets).toBe(5);
+
+    for (const trace of result.traces) {
+      expect(trace.points.length).toBeGreaterThanOrEqual(2);
+      for (const pt of trace.points) {
+        expect(pt.x).toBeGreaterThanOrEqual(0);
+        expect(pt.x).toBeLessThanOrEqual(40);
+        expect(pt.y).toBeGreaterThanOrEqual(0);
+        expect(pt.y).toBeLessThanOrEqual(30);
+      }
+    }
+  });
+});

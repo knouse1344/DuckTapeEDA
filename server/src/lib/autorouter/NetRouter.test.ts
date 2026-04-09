@@ -3,16 +3,17 @@ import { orderNets, buildSpanningPairs } from "./NetRouter.js";
 import type { Connection } from "../../types/circuit.js";
 
 describe("orderNets", () => {
-  it("puts power nets (GND, VBUS, VCC) first", () => {
+  it("puts signal nets before power nets at equal pin count", () => {
     const connections: Connection[] = [
       { netName: "SIG1", pins: [{ ref: "R1", pin: "1" }, { ref: "R2", pin: "1" }] },
       { netName: "GND", pins: [{ ref: "U1", pin: "GND" }, { ref: "C1", pin: "2" }] },
       { netName: "VBUS", pins: [{ ref: "J1", pin: "VBUS" }, { ref: "U1", pin: "VIN" }] },
     ];
     const ordered = orderNets(connections);
-    expect(ordered[0].netName).toBe("GND");
-    expect(ordered[1].netName).toBe("VBUS");
-    expect(ordered[2].netName).toBe("SIG1");
+    // All 2-pin: signal first, then power (alphabetically within each group)
+    expect(ordered[0].netName).toBe("SIG1");
+    expect(ordered[1].netName).toBe("GND");
+    expect(ordered[2].netName).toBe("VBUS");
   });
 
   it("within same priority, sorts by pin count ascending", () => {
