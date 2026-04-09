@@ -8,6 +8,7 @@ import {
 } from "./services/designs";
 import { checkDesign, type CheckFinding } from "./services/designCheck";
 import { rerouteTraces } from "./services/reroute";
+import type { RerouteResult } from "./services/reroute";
 import { useAuth } from "./contexts/AuthContext";
 import ChatPanel from "./components/ChatPanel";
 import DesignViewer from "./components/DesignViewer";
@@ -41,6 +42,7 @@ export default function App() {
 
   // Re-route state
   const [rerouting, setRerouting] = useState(false);
+  const [routeResult, setRouteResult] = useState<RerouteResult | null>(null);
 
   // Component gallery toggle
   const [showGallery, setShowGallery] = useState(false);
@@ -210,6 +212,7 @@ export default function App() {
   };
 
   const handleUpdatePosition = (ref: string, x: number, y: number, rotation: number) => {
+    setRouteResult(null);
     setCurrentDesign(prev => {
       if (!prev) return prev;
       const updated = {
@@ -227,9 +230,11 @@ export default function App() {
   const handleReroute = async () => {
     if (!token || !currentDesign) return;
     setRerouting(true);
+    setRouteResult(null);
     try {
-      const newTraces = await rerouteTraces(token, currentDesign);
-      const updatedDesign = { ...currentDesign, traces: newTraces };
+      const result = await rerouteTraces(token, currentDesign);
+      setRouteResult(result);
+      const updatedDesign = { ...currentDesign, traces: result.traces };
       setCurrentDesign(updatedDesign);
       if (currentDesignId) {
         await updateDesign(token, currentDesignId, updatedDesign, messages);
@@ -311,6 +316,7 @@ export default function App() {
             onUpdatePosition={handleUpdatePosition}
             onReroute={handleReroute}
             rerouting={rerouting}
+            routeResult={routeResult}
           />
         </div>
       </div>

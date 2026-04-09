@@ -1,5 +1,6 @@
 import type { CircuitDesign } from "../types/circuit";
 import type { CheckFinding } from "../services/designCheck";
+import type { RerouteResult } from "../services/reroute";
 import { useState, useEffect, useRef } from "react";
 import ThreeDRenderer from "./threed/ThreeDRenderer";
 import DesignCheckPanel from "./DesignCheckPanel";
@@ -18,6 +19,7 @@ interface Props {
   onUpdatePosition?: (ref: string, x: number, y: number, rotation: number) => void;
   onReroute?: () => void;
   rerouting?: boolean;
+  routeResult?: RerouteResult | null;
 }
 
 type Tab = "schematic" | "pcb" | "3d";
@@ -32,6 +34,7 @@ export default function DesignViewer({
   onUpdatePosition,
   onReroute,
   rerouting = false,
+  routeResult,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("pcb");
   const [showBomMenu, setShowBomMenu] = useState(false);
@@ -163,6 +166,35 @@ export default function DesignViewer({
           </div>
         )}
       </div>
+
+      {/* Routing result banner */}
+      {routeResult && !rerouting && (
+        <div className={`mx-4 mt-2 px-3 py-2 rounded text-sm ${
+          routeResult.stats.failedNets === 0
+            ? "bg-green-50 text-green-700 border border-green-200"
+            : routeResult.stats.routedNets === 0
+              ? "bg-red-50 text-red-700 border border-red-200"
+              : "bg-amber-50 text-amber-700 border border-amber-200"
+        }`}>
+          {routeResult.stats.failedNets === 0 ? (
+            <span>Routed {routeResult.stats.routedNets}/{routeResult.stats.totalNets} nets in {routeResult.stats.timeMs}ms</span>
+          ) : (
+            <div>
+              <span className="font-medium">
+                Routed {routeResult.stats.routedNets}/{routeResult.stats.totalNets} nets.
+                {" "}{routeResult.stats.failedNets} failed.
+              </span>
+              {routeResult.failures.length > 0 && (
+                <ul className="mt-1 text-xs space-y-0.5">
+                  {routeResult.failures.map((f, i) => (
+                    <li key={i}>{f.net}: no path {f.from} to {f.to}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
